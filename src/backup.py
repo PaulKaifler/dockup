@@ -7,9 +7,25 @@ import logging
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+# Load the SSH key name from the environment variable
+config.SSH_KEY = f"/root/.ssh/{os.getenv('SSH_KEY')}"
+
 def perform_backup():
     client = docker.from_env()
     volumes = client.volumes.list()
+
+    # log all available volumes
+    logging.info("Available volumes:")
+    for volume in volumes:
+        logging.info(f"Volume: {volume.name}")
+    if not volumes:
+        logging.warning("No volumes found to backup.")
+        return
+    
+    # Check if SSH key exists
+    if not os.path.exists(config.SSH_KEY):
+        logging.error(f"SSH key not found at {config.SSH_KEY}")
+        raise Exception(f"SSH key not found at {config.SSH_KEY}")
 
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -17,7 +33,7 @@ def perform_backup():
         ssh.connect(
             hostname=config.SSH_HOST,
             username=config.SSH_USER,
-            key_filename=config.SSH_KEY_PATH
+            key_filename=config.SSH_KEY
         )
     except paramiko.ssh_exception.SSHException as e:
         raise Exception(f"SSH connection failed: {str(e)}")
@@ -30,7 +46,13 @@ def perform_backup():
 
         # Create a tarball of the volume
         logging.info(f"Creating tarball for volume {volume_name}")
-        os.system(f"docker run --rm -v {volume_name}:/data -v $(pwd):/backup busybox tar czf /backup/{archive_name} /data")
+        tarball_command = f"docker run --rm -v {volume_name}:/data -v $(pwd):/backup busybox tar czf /backup/{archive_name} /data"
+        tarball_result = os.system(tarball_command)
+
+        # Check if tarball was created successfully
+        if tarball_result != 0 or not os.path.exists(archive_name):
+            logging.error(f"Failed to create tarball for volume {volume_name}. Skipping.")
+            continue
 
         # Create a folder for the volume on the remote system
         remote_folder = f"{config.REMOTE_BACKUP_PATH}/{volume_name}"
