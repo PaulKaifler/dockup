@@ -3,6 +3,9 @@ import os
 import config
 import datetime
 import logging
+import time
+import subprocess
+from email_service import send_email
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -10,7 +13,8 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 config.SSH_KEY = f"/root/.ssh/{os.getenv('SSH_KEY')}"
 
 def perform_backup():
-
+    backup_summary = []
+    
     volumes = []
     for name in os.listdir('/mnt'):
         data_path = os.path.join('/mnt', name, '_data')
@@ -45,6 +49,8 @@ def perform_backup():
     for volume_name, volume_path in volumes:
         logging.info(f"Processing volume: {volume_name}")
         archive_name = f"{volume_name}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.tar.gz"
+        
+        start_time = time.time()
 
         # Create a tarball of the volume directly from the mounted path
         logging.info(f"Creating tarball for volume {volume_name} from {volume_path}")
@@ -67,10 +73,30 @@ def perform_backup():
         sftp.put(archive_name, f"{remote_folder}/{archive_name}")
         sftp.close()
 
+        end_time = time.time()
+        duration = end_time - start_time
+        archive_size = subprocess.getoutput(f"du -sh {archive_name} | cut -f1")
+
+        # Get number of backups on remote system
+        stdin, stdout, stderr = ssh.exec_command(f"ls {remote_folder}/*.tar.gz 2>/dev/null | wc -l")
+        remote_count = stdout.read().decode().strip()
+
         # Clean up local tarball
         logging.info(f"Cleaning up local tarball: {archive_name}")
         os.remove(archive_name)
 
+        backup_summary.append(f"{volume_name}\n{archive_size} | {duration:.2f}s | {remote_count}")
+
     logging.info("Backup process completed successfully")
+
+    logging.info("Backup Summary:")
+    summary_lines = []
+    for entry in backup_summary:
+        logging.info(entry)
+        summary_lines.append(f"- {entry}")
+
+    plain_body = "Docker Volume Backup Summary\n\nVolume\nSize | Time | Remote Count\n\n" + "\n\n".join(summary_lines)
+
+    send_email("Docker Volume Backup Report", plain_body)
 
     ssh.close()

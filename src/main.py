@@ -11,8 +11,6 @@ def main():
         # Perform the backup
         backup.perform_backup()
         logging.info("Backup completed successfully")
-        # Send success email
-        email_service.send_email("Backup Successful", "The backup was completed successfully.")
     except Exception as e:
         logging.error(f"Backup failed: {str(e)}")
         # Send failure email
