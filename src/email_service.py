@@ -6,7 +6,6 @@ import logging
 
 def send_email(subject, body):
     logging.info(f"Sending email to {config.NOTIFY_EMAIL} with subject: {subject}")
-    logging.info(f"Email settings: {config.EMAIL_HOST}, {config.EMAIL_PORT}, {config.EMAIL_USER}")
     try:
         # Create the email message
         msg = MIMEMultipart()
