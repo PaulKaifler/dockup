@@ -24,7 +24,7 @@ def perform_backup():
         os.system(f"docker run --rm -v {volume_name}:/data -v $(pwd):/backup busybox tar czf /backup/{archive_name} /data")
 
         # Create a folder for the volume on the remote system
-        remote_folder = f"/remote/backup/path/{volume_name}"
+        remote_folder = f"{config.REMOTE_BACKUP_PATH}/{volume_name}"
         ssh.exec_command(f"mkdir -p {remote_folder}")
 
         # Transfer the tarball over SSH
