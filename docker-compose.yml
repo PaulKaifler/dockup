@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  dockup:
+    build: .
+    env_file: .env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ~/.ssh:/root/.ssh:ro
+    restart: always
+    command: ["sh", "-c", "while true; do python src/main.py; sleep 86400; done"]

@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Environment
+.env
+
+# Docker
+*.tar.gz
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
+
+# Other
+*.swp
+*.swo
+*.bak
+*.tmp
