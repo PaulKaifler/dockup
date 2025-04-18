@@ -14,7 +14,7 @@ dirs = "6.0.0"
 dotenv = "0.15.0"
 flate2 = "1.1.1"
 fs = "0.0.5"
-lettre = { version = "0.11.15", features = ["smtp-transport", "tokio1-native-tls"] }
+lettre = { version = "0.11", default-features = false, features = ["tokio1-rustls", "rustls-native-certs", "ring", "builder", "smtp-transport"] }
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
 ssh2 = "0.9.5"
