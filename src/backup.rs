@@ -5,7 +5,7 @@ use std::{fs, path::PathBuf, process::Command};
 
 pub fn run_backup(config: &Config) -> Result<()> {
     let apps = scan_projects(config)?;
-    let timestamp = Local::now().format("%Y%m%d_%H%M").to_string();
+    let timestamp = Local::now().format("%Y_%m_%d_%H%M").to_string();
 
     for app in apps {
         println!("\n🗂 Backing up: {}", app.name);
@@ -33,7 +33,20 @@ pub fn run_backup(config: &Config) -> Result<()> {
 
         // --- Archive volumes ---
         for vol in &app.volumes {
-            let vol_path = PathBuf::from(format!("/var/lib/docker/volumes/{}/_data", vol));
+            let compose_project_volume_name = format!("{}_{}", app.name, vol);
+
+            let vol_path = match resolve_volume_path(&compose_project_volume_name) {
+                Ok(path) => path,
+                Err(e) => {
+                    eprintln!(
+                        "❌ Could not resolve mount path for `{}`: {e}",
+                        compose_project_volume_name
+                    );
+                    continue;
+                }
+            };
+            println!("Volume path: {}", vol_path.display());
+
             if vol_path.exists() {
                 let vol_tar = create_tar(&vol_path, &format!("{vol}.tar.gz"))?;
                 created_files.push(vol_tar.clone());
@@ -65,6 +78,23 @@ pub fn run_backup(config: &Config) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn resolve_volume_path(volume: &str) -> Result<PathBuf> {
+    let output = Command::new("docker")
+        .args(["volume", "inspect", volume, "--format", "{{ .Mountpoint }}"])
+        .output()?;
+
+    if !output.status.success() {
+        anyhow::bail!(
+            "Failed to inspect volume `{}`: {}",
+            volume,
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    let mount = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Ok(PathBuf::from(mount))
 }
 
 pub fn dry_run(config: &Config) -> Result<()> {
