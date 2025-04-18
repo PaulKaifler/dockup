@@ -22,7 +22,6 @@ pub fn run_backup(config: &Config) -> Result<Vec<AppSummary>> {
     let mut summaries: Vec<AppSummary> = Vec::new();
 
     for app in apps {
-        let start_time = Local::now();
         println!("\n🗂 Backing up: {}", app.name);
         let mut volume_statuses = Vec::new();
         let remote_base = format!("{}/{}/{}", config.remote_backup_path, app.name, timestamp);
@@ -36,7 +35,7 @@ pub fn run_backup(config: &Config) -> Result<Vec<AppSummary>> {
         let repo_tar = create_tar(&app.path, "repo.tar.gz")?;
         created_files.push(repo_tar.clone());
 
-        let repo_status = if let Err(e) = scp_upload(
+        let _repo_status = if let Err(e) = scp_upload(
             config,
             &repo_tar,
             &format!("{}/REPO/repo.tar.gz", remote_base),
@@ -49,7 +48,7 @@ pub fn run_backup(config: &Config) -> Result<Vec<AppSummary>> {
                 (Local::now().timestamp_millis() - start_repo_time.timestamp_millis()) as f64
                     / 1000.0
             );
-            let repo_size_str = format!("{} ({} seconds)", repo_size, duration);
+            let repo_size_str = format!("{}", repo_size);
             let repo_summary = BackupThingSummary {
                 name: "REPO".to_string(),
                 status: "✅".to_string(),
@@ -66,7 +65,7 @@ pub fn run_backup(config: &Config) -> Result<Vec<AppSummary>> {
         for vol in &app.volumes {
             let compose_project_volume_name = format!("{}_{}", app.name, vol);
             let start_volume_time = Local::now();
-            let volume_status = if let Err(e) =
+            let _volume_status = if let Err(e) =
                 create_volume_tar(&compose_project_volume_name, &format!("{vol}.tar.gz"))
             {
                 format!("❌ Failed to create tarball for volume `{}`: {e}", vol)
@@ -179,8 +178,9 @@ fn get_file_size(path: &PathBuf) -> Result<String> {
     if !output.status.success() {
         anyhow::bail!("Failed to get file size for: {:?}", path);
     }
-    let size_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    Ok(size_str)
+    let size_str = String::from_utf8_lossy(&output.stdout);
+    let size = size_str.split_whitespace().next().unwrap_or("0");
+    Ok(size.to_string())
 }
 
 fn run_remote_cmd(cfg: &Config, cmd: &str) -> Result<()> {
