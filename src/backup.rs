@@ -35,35 +35,19 @@ pub fn run_backup(config: &Config) -> Result<()> {
         for vol in &app.volumes {
             let compose_project_volume_name = format!("{}_{}", app.name, vol);
 
-            let vol_path = match resolve_volume_path(&compose_project_volume_name) {
-                Ok(path) => path,
-                Err(e) => {
-                    eprintln!(
-                        "❌ Could not resolve mount path for `{}`: {e}",
-                        compose_project_volume_name
-                    );
-                    continue;
-                }
-            };
-            println!("Volume path: {}", vol_path.display());
+            if let Err(e) =
+                create_volume_tar(&compose_project_volume_name, &format!("{vol}.tar.gz"))
+            {
+                eprintln!("❌ Failed to create tarball for volume `{}`: {e}", vol);
+                continue;
+            }
 
-            if vol_path.exists() {
-                let vol_tar = create_tar(&vol_path, &format!("{vol}.tar.gz"))?;
-                created_files.push(vol_tar.clone());
-
-                if let Err(e) = scp_upload(
-                    config,
-                    &vol_tar,
-                    &format!(
-                        "{}/VOLUMES/{}",
-                        remote_base,
-                        vol_tar.file_name().unwrap().to_string_lossy()
-                    ),
-                ) {
-                    eprintln!("❌ Failed to upload volume `{}`: {e}", vol);
-                }
-            } else {
-                eprintln!("⚠️  Volume not found: {}", vol);
+            if let Err(e) = scp_upload(
+                config,
+                &PathBuf::from(format!("/tmp/{}", vol)).with_extension("tar.gz"),
+                &format!("{}/VOLUMES/{}", remote_base, format!("{vol}.tar.gz")),
+            ) {
+                eprintln!("❌ Failed to upload volume `{}`: {e}", vol);
             }
         }
 
@@ -78,23 +62,6 @@ pub fn run_backup(config: &Config) -> Result<()> {
     }
 
     Ok(())
-}
-
-fn resolve_volume_path(volume: &str) -> Result<PathBuf> {
-    let output = Command::new("docker")
-        .args(["volume", "inspect", volume, "--format", "{{ .Mountpoint }}"])
-        .output()?;
-
-    if !output.status.success() {
-        anyhow::bail!(
-            "Failed to inspect volume `{}`: {}",
-            volume,
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
-
-    let mount = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    Ok(PathBuf::from(mount))
 }
 
 pub fn dry_run(config: &Config) -> Result<()> {
@@ -130,6 +97,31 @@ fn create_tar(src: &PathBuf, output: &str) -> Result<PathBuf> {
     if !status.success() {
         anyhow::bail!("Failed to create tarball: {:?}", output_path);
     }
+    Ok(output_path)
+}
+
+fn create_volume_tar(volume: &str, tar_name: &str) -> Result<PathBuf> {
+    let output_path = PathBuf::from("/tmp").join(tar_name);
+
+    let status = Command::new("docker")
+        .args([
+            "run",
+            "--rm",
+            "-v",
+            &format!("{}:/data", volume),
+            "-v",
+            "/tmp:/backup",
+            "alpine",
+            "sh",
+            "-c",
+            &format!("tar -czf /backup/{} -C /data .", tar_name),
+        ])
+        .status()?;
+
+    if !status.success() {
+        anyhow::bail!("Failed to create tarball for volume: {}", volume);
+    }
+
     Ok(output_path)
 }
 
