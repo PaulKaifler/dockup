@@ -6,6 +6,8 @@ mod scanner;
 use clap::CommandFactory;
 use clap::{Parser, Subcommand};
 use clap_complete::{generate, Shell};
+use std::fs;
+use std::io::Write;
 
 #[derive(Parser)]
 #[command(
@@ -36,8 +38,8 @@ enum Commands {
         action: ConfigAction,
     },
 
-    /// Generate shell completion scripts
-    Completion {
+    /// Make dockup ready for shell completion
+    SetupCompletion {
         #[arg(long)]
         shell: Shell,
     },
@@ -118,9 +120,69 @@ async fn main() -> anyhow::Result<()> {
             result?;
         }
         Commands::DryRun => backup::dry_run(&cfg)?,
-        Commands::Completion { shell } => {
-            use std::io;
-            generate(shell, &mut Cli::command(), "dockup", &mut io::stdout());
+        Commands::SetupCompletion { shell } => {
+            let path = match shell {
+                Shell::Zsh => {
+                    let path = dirs::home_dir().unwrap().join(".zfunc").join("_dockup");
+                    fs::create_dir_all(path.parent().unwrap())?;
+                    let mut file = fs::File::create(&path)?;
+                    generate(shell, &mut Cli::command(), "dockup", &mut file);
+                    println!("✅ Completion script installed to: {}", path.display());
+                    println!(
+                        "👉 Add this to your ~/.zshrc if not already there:\n\n  fpath+=~/.zfunc\n  autoload -Uz compinit && compinit\n"
+                    );
+                    println!(
+                        "Do you want to automatically add the setup to your shell config? (y/n):"
+                    );
+                    let mut answer = String::new();
+                    std::io::stdin().read_line(&mut answer)?;
+                    if answer.trim() == "y" {
+                        let zshrc = dirs::home_dir().unwrap().join(".zshrc");
+                        let snippet = "fpath+=~/.zfunc\nautoload -Uz compinit && compinit";
+                        let contents = fs::read_to_string(&zshrc).unwrap_or_default();
+                        if !contents.contains(snippet) {
+                            let mut file = fs::OpenOptions::new().append(true).open(&zshrc)?;
+                            writeln!(file, "\n{}", snippet)?;
+                            println!("✅ Added completion setup to {}", zshrc.display());
+                        }
+                    }
+                    path
+                }
+                Shell::Bash => {
+                    let path = dirs::home_dir()
+                        .unwrap()
+                        .join(".dockup")
+                        .join("dockup.bash");
+                    fs::create_dir_all(path.parent().unwrap())?;
+                    let mut file = fs::File::create(&path)?;
+                    generate(shell, &mut Cli::command(), "dockup", &mut file);
+                    println!("✅ Bash completion written to: {}", path.display());
+                    println!(
+                        "👉 Add this to your ~/.bashrc:\n\n  source {}\n",
+                        path.display()
+                    );
+                    println!(
+                        "Do you want to automatically add the setup to your shell config? (y/n):"
+                    );
+                    let mut answer = String::new();
+                    std::io::stdin().read_line(&mut answer)?;
+                    if answer.trim() == "y" {
+                        let bashrc = dirs::home_dir().unwrap().join(".bashrc");
+                        let snippet = format!("source {}", path.display());
+                        let contents = fs::read_to_string(&bashrc).unwrap_or_default();
+                        if !contents.contains(&snippet) {
+                            let mut file = fs::OpenOptions::new().append(true).open(&bashrc)?;
+                            writeln!(file, "\n{}", snippet)?;
+                            println!("✅ Added completion setup to {}", bashrc.display());
+                        }
+                    }
+                    path
+                }
+                _ => {
+                    println!("❌ Completion setup for {:?} not supported yet.", shell);
+                    return Ok(());
+                }
+            };
         }
         Commands::Config { action } => match action {
             ConfigAction::View => println!("{:#?}", cfg),
