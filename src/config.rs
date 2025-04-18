@@ -111,10 +111,10 @@ impl Config {
         let output = std::process::Command::new("ssh")
             .arg("-i")
             .arg(&self.ssh_key)
-            .arg(format!("{}@{}", self.ssh_user, self.ssh_host))
-            .arg("echo 'SSH connection successful'")
             .arg("-p")
             .arg(self.ssh_port.to_string())
+            .arg(format!("{}@{}", self.ssh_user, self.ssh_host))
+            .arg("echo 'SSH connection successful'")
             .output()?;
 
         if output.status.success() {

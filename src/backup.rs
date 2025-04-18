@@ -181,8 +181,8 @@ fn get_file_size(path: &PathBuf) -> Result<String> {
 
 fn run_remote_cmd(cfg: &Config, cmd: &str) -> Result<()> {
     let full_cmd = format!(
-        "ssh -i {} {}@{} -p {} '{}'",
-        cfg.ssh_key, cfg.ssh_user, cfg.ssh_host, cfg.ssh_port, cmd
+        "ssh -i {} -p {} {}@{} '{}'",
+        cfg.ssh_key, cfg.ssh_port, cfg.ssh_user, cfg.ssh_host, cmd
     );
     let status = Command::new("sh").arg("-c").arg(full_cmd).status()?;
     if !status.success() {
@@ -194,7 +194,14 @@ fn run_remote_cmd(cfg: &Config, cmd: &str) -> Result<()> {
 fn scp_upload(cfg: &Config, local: &PathBuf, remote_path: &str) -> Result<()> {
     let remote = format!("{}@{}:{}", cfg.ssh_user, cfg.ssh_host, remote_path);
     let status = Command::new("scp")
-        .args(["-i", &cfg.ssh_key, local.to_str().unwrap(), &remote])
+        .args([
+            "-i",
+            &cfg.ssh_key,
+            "-P",
+            &cfg.ssh_port.to_string(),
+            local.to_str().unwrap(),
+            &remote,
+        ])
         .status()?;
     if !status.success() {
         anyhow::bail!("SCP upload failed: {:?}", local);
