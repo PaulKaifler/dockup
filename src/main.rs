@@ -19,9 +19,16 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Scan all projects and list detected volumes
     Scan,
+
+    /// Run full backup: repo + volumes
     Backup,
+
+    /// Dry run without actual backup
     DryRun,
+
+    /// View or modify configuration
     Config {
         #[command(subcommand)]
         action: ConfigAction,
