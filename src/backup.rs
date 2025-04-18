@@ -1,8 +1,5 @@
-use crate::{
-    config::Config,
-    scanner::{scan_projects, BackupApplication},
-};
-use anyhow::{Context, Result};
+use crate::{config::Config, scanner::scan_projects};
+use anyhow::Result;
 use chrono::Local;
 use std::{fs, path::PathBuf, process::Command};
 

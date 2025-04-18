@@ -1,3 +1,4 @@
+use crate::email;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -28,7 +29,7 @@ impl Config {
             .join("config.json")
     }
 
-    pub fn load_or_create() -> Result<Config> {
+    pub async fn load_or_create() -> Result<Config> {
         let path = Self::config_path();
 
         if path.exists() {
@@ -36,7 +37,7 @@ impl Config {
             Ok(serde_json::from_str(&data)?)
         } else {
             println!("No configuration found. Let's create one:");
-            let config = Config::interactive_create()?;
+            let config = Config::interactive_create().await?;
             config.save()?;
             Ok(config)
         }
@@ -50,7 +51,7 @@ impl Config {
         Ok(())
     }
 
-    pub fn interactive_create() -> Result<Config> {
+    pub async fn interactive_create() -> Result<Config> {
         fn ask(prompt: &str) -> Result<String> {
             print!("{prompt}: ");
             io::stdout().flush()?;
@@ -59,7 +60,7 @@ impl Config {
             Ok(buf.trim().to_string())
         }
 
-        Ok(Config {
+        let config = Config {
             docker_parent: ask("Docker parent directory")?,
             remote_backup_path: ask("Remote backup path")?,
             ssh_user: ask("SSH user")?,
@@ -70,7 +71,16 @@ impl Config {
             email_user: ask("Email user")?,
             email_password: ask("Email password")?,
             receiver_mail: ask("Receiver email")?,
-        })
+        };
+
+        let test_prompt =
+            ask("Would you like to test the SSH and Email configuration now? (y/n): ")?;
+        if test_prompt.eq_ignore_ascii_case("y") {
+            config.test_ssh().await?;
+            config.test_email().await?;
+        }
+
+        Ok(config)
     }
 
     pub fn set_key_value(&mut self, key: &str, value: &str) -> Result<()> {
@@ -90,5 +100,27 @@ impl Config {
             _ => anyhow::bail!("Unknown config key: {}", key),
         }
         Ok(())
+    }
+
+    pub async fn test_ssh(&self) -> Result<()> {
+        let output = std::process::Command::new("ssh")
+            .arg("-i")
+            .arg(&self.ssh_key)
+            .arg(format!("{}@{}", self.ssh_user, self.ssh_host))
+            .arg("echo 'SSH connection successful'")
+            .output()?;
+
+        if output.status.success() {
+            println!("✅ SSH connection successful");
+        } else {
+            eprintln!(
+                "❌ SSH connection failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        Ok(())
+    }
+    pub async fn test_email(&self) -> Result<()> {
+        email::send_test_email(self).await
     }
 }

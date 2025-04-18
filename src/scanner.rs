@@ -2,7 +2,6 @@ use crate::config::Config;
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
-use walkdir::WalkDir;
 use yaml_rust::YamlLoader;
 
 #[derive(Debug)]

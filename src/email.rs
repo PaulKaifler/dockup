@@ -28,3 +28,9 @@ pub async fn send_summary_email(cfg: &Config, subject: &str, body: &str) -> Resu
 
     Ok(())
 }
+
+pub async fn send_test_email(cfg: &Config) -> Result<()> {
+    let subject = "Dockup Test Email";
+    let body = "If you are reading this, the email configuration is working.";
+    send_summary_email(cfg, subject, body).await
+}

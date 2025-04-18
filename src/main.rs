@@ -8,8 +8,8 @@ use clap::{Parser, Subcommand};
 #[derive(Parser)]
 #[command(
     name = "Dockup",
-    version,
-    author,
+    version = "0.1.0",
+    author = "Paul Kaifler",
     about = "Automatic Docker backup CLI"
 )]
 struct Cli {
@@ -37,12 +37,13 @@ enum ConfigAction {
         #[arg(long)]
         value: String,
     },
+    Test,
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    let cfg = config::Config::load_or_create()?;
+    let cfg = config::Config::load_or_create().await?;
 
     match cli.command {
         Commands::Scan => {
@@ -74,6 +75,17 @@ async fn main() -> anyhow::Result<()> {
                 cfg.set_key_value(&key, &value)?;
                 cfg.save()?;
                 println!("Updated config key `{key}` to `{value}`");
+                println!("Do you want to test the new configuration? (y/n):");
+                let mut input = String::new();
+                std::io::stdin().read_line(&mut input)?;
+                if input.trim() == "y" {
+                    cfg.test_ssh().await?;
+                    cfg.test_email().await?;
+                }
+            }
+            ConfigAction::Test => {
+                cfg.test_ssh().await?;
+                cfg.test_email().await?;
             }
         },
     }
