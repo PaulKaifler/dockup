@@ -78,6 +78,11 @@ enum ConfigAction {
         #[arg(long, help = "The value to set for the configuration key")]
         value: String,
     },
+
+    #[command(
+        about = "Test the current configuration",
+        long_about = "Test the current configuration settings.\n\nThis command will test the SSH and email configuration settings to ensure they are valid.\n\nIf you don't receive an email, maybe look into your spam."
+    )]
     Test,
 }
 
@@ -145,7 +150,7 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::DryRun => backup::dry_run(&cfg)?,
         Commands::SetupCompletion { shell } => {
-            let path = match shell {
+            let _path = match shell {
                 Shell::Zsh => {
                     let path = dirs::home_dir().unwrap().join(".zfunc").join("_dockup");
                     fs::create_dir_all(path.parent().unwrap())?;
