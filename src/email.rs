@@ -7,12 +7,18 @@ use lettre::{
 };
 
 /// Send summary email after backup job
-pub async fn send_summary_email(cfg: &Config, subject: &str, body: &str) -> Result<()> {
+use lettre::message::{header::ContentType, SinglePart};
+
+pub async fn send_summary_email(cfg: &Config, subject: &str, html_body: &str) -> Result<()> {
     let email = Message::builder()
         .from(cfg.email_user.parse::<Mailbox>()?)
         .to(cfg.receiver_mail.parse::<Mailbox>()?)
         .subject(subject)
-        .body(body.to_string())?;
+        .singlepart(
+            SinglePart::builder()
+                .header(ContentType::TEXT_HTML)
+                .body(html_body.to_string()),
+        )?;
 
     let creds = Credentials::new(cfg.email_user.clone(), cfg.email_password.clone());
 

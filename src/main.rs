@@ -52,20 +52,25 @@ async fn main() -> anyhow::Result<()> {
         Commands::Backup => {
             let result = backup::run_backup(&cfg);
             match &result {
-                Ok(_) => {
-                    email::send_summary_email(
-                        &cfg,
-                        "Dockup Backup Report",
-                        "All projects backed up successfully.",
-                    )
-                    .await?;
+                Ok(summaries) => {
+                    let mut summary_messages = String::new();
+                    for summary in summaries {
+                        summary_messages
+                            .push_str(&format!("<p><strong>{}</strong></p>", summary.name));
+                        for volume_status in &summary.volume_statuses {
+                            summary_messages.push_str(&format!("<li>{:?}</li>", volume_status));
+                        }
+                        summary_messages.push_str("</ul>");
+                    }
+                    email::send_summary_email(&cfg, "Dockup Backup Report", &summary_messages)
+                        .await?;
                 }
                 Err(e) => {
                     let msg = format!("Backup encountered an error:\n{e}");
                     email::send_summary_email(&cfg, "Dockup Backup Report", &msg).await?;
                 }
             }
-            result?
+            result?;
         }
         Commands::DryRun => backup::dry_run(&cfg)?,
         Commands::Config { action } => match action {

@@ -3,14 +3,28 @@ use anyhow::Result;
 use chrono::Local;
 use std::{fs, path::PathBuf, process::Command};
 
-pub fn run_backup(config: &Config) -> Result<()> {
+#[derive(Debug)]
+pub struct BackupThingSummary {
+    pub name: String,
+    pub status: String,
+    pub size: String,
+    pub duration: String,
+}
+
+pub struct AppSummary {
+    pub name: String,
+    pub volume_statuses: Vec<BackupThingSummary>,
+}
+
+pub fn run_backup(config: &Config) -> Result<Vec<AppSummary>> {
     let apps = scan_projects(config)?;
     let timestamp = Local::now().format("%Y_%m_%d_%H%M").to_string();
+    let mut summaries: Vec<AppSummary> = Vec::new();
 
     for app in apps {
+        let start_time = Local::now();
         println!("\n🗂 Backing up: {}", app.name);
-
-        // Target path: /remote/project_name/timestamp/
+        let mut volume_statuses = Vec::new();
         let remote_base = format!("{}/{}/{}", config.remote_backup_path, app.name, timestamp);
         run_remote_cmd(
             config,
@@ -18,40 +32,74 @@ pub fn run_backup(config: &Config) -> Result<()> {
         )?;
 
         let mut created_files: Vec<PathBuf> = Vec::new();
-
-        // --- Archive repo directory ---
+        let start_repo_time = Local::now();
         let repo_tar = create_tar(&app.path, "repo.tar.gz")?;
         created_files.push(repo_tar.clone());
 
-        if let Err(e) = scp_upload(
+        let repo_status = if let Err(e) = scp_upload(
             config,
             &repo_tar,
             &format!("{}/REPO/repo.tar.gz", remote_base),
         ) {
-            eprintln!("❌ Failed to upload repo tarball: {e}");
-        }
+            format!("❌ Failed to upload repo tarball: {e}")
+        } else {
+            let repo_size = get_file_size(&repo_tar)?;
+            let duration = format!(
+                "{:.2} seconds",
+                (Local::now().timestamp_millis() - start_repo_time.timestamp_millis()) as f64
+                    / 1000.0
+            );
+            let repo_size_str = format!("{} ({} seconds)", repo_size, duration);
+            let repo_summary = BackupThingSummary {
+                name: "REPO".to_string(),
+                status: "✅".to_string(),
+                size: repo_size_str,
+                duration,
+            };
+            summaries.push(AppSummary {
+                name: app.name.clone(),
+                volume_statuses: vec![repo_summary],
+            });
+            continue;
+        };
 
-        // --- Archive volumes ---
         for vol in &app.volumes {
             let compose_project_volume_name = format!("{}_{}", app.name, vol);
-
-            if let Err(e) =
+            let start_volume_time = Local::now();
+            let volume_status = if let Err(e) =
                 create_volume_tar(&compose_project_volume_name, &format!("{vol}.tar.gz"))
             {
-                eprintln!("❌ Failed to create tarball for volume `{}`: {e}", vol);
-                continue;
-            }
-
-            if let Err(e) = scp_upload(
+                format!("❌ Failed to create tarball for volume `{}`: {e}", vol)
+            } else if let Err(e) = scp_upload(
                 config,
                 &PathBuf::from(format!("/tmp/{}", vol)).with_extension("tar.gz"),
                 &format!("{}/VOLUMES/{}", remote_base, format!("{vol}.tar.gz")),
             ) {
-                eprintln!("❌ Failed to upload volume `{}`: {e}", vol);
-            }
+                format!("❌ Failed to upload volume `{}`: {e}", vol)
+            } else {
+                let volume_size = get_file_size(
+                    &PathBuf::from(format!("/tmp/{}", vol)).with_extension("tar.gz"),
+                )?;
+                let duration = format!(
+                    "{:.2} seconds",
+                    (Local::now().timestamp_millis() - start_volume_time.timestamp_millis()) as f64
+                        / 1000.0
+                );
+                volume_statuses.push(BackupThingSummary {
+                    name: vol.to_string(),
+                    status: format!("✅ {}", vol),
+                    size: volume_size,
+                    duration,
+                });
+                format!("✅ {}", vol)
+            };
         }
 
-        // --- Clean up ---
+        summaries.push(AppSummary {
+            name: app.name.clone(),
+            volume_statuses,
+        });
+
         for f in created_files {
             if let Err(e) = fs::remove_file(&f) {
                 eprintln!("⚠️  Failed to delete temp file {:?}: {e}", f);
@@ -60,8 +108,7 @@ pub fn run_backup(config: &Config) -> Result<()> {
             }
         }
     }
-
-    Ok(())
+    Ok(summaries)
 }
 
 pub fn dry_run(config: &Config) -> Result<()> {
@@ -123,6 +170,17 @@ fn create_volume_tar(volume: &str, tar_name: &str) -> Result<PathBuf> {
     }
 
     Ok(output_path)
+}
+
+fn get_file_size(path: &PathBuf) -> Result<String> {
+    let output = Command::new("du")
+        .args(["-sh", path.to_str().unwrap()])
+        .output()?;
+    if !output.status.success() {
+        anyhow::bail!("Failed to get file size for: {:?}", path);
+    }
+    let size_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Ok(size_str)
 }
 
 fn run_remote_cmd(cfg: &Config, cmd: &str) -> Result<()> {
