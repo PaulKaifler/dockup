@@ -23,35 +23,59 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Scan all projects and list detected volumes
+    #[command(
+        about = "Scan for Docker projects",
+        long_about = "Scans the specified directory for Docker projects.\n\nThis command will look for Dockerfiles and docker-compose files in the specified directory."
+    )]
     Scan,
 
-    /// Run full backup: repo + volumes
+    #[command(
+        about = "Backup all projects",
+        long_about = "Performs a backup of all projects.\nUploads the backup to the remote server.\n\nThis command will create a tarball of each project and upload it to the specified remote location."
+    )]
     Backup,
 
-    /// Dry run without actual backup
+    #[command(
+        about = "Dry run without actual backup",
+        long_about = "Performs a dry run of the backup process.\nNo data will be written or transferred.\nUseful for testing and validation."
+    )]
     DryRun,
 
-    /// View or modify configuration
+    #[command(
+        about = "Configure dockup",
+        long_about = "Configure dockup settings.\n\nThis command allows you to view and modify the configuration settings for dockup."
+    )]
     Config {
         #[command(subcommand)]
         action: ConfigAction,
     },
 
-    /// Make dockup ready for shell completion
+    #[command(
+        about = "Setup shell completion",
+        long_about = "Setup shell completion for dockup.\n\nThis command will generate a completion script for your shell.\n\nSupported shells: bash, zsh."
+    )]
     SetupCompletion {
-        #[arg(long)]
+        #[arg(long, help = "The shell type for which to generate completion")]
         shell: Shell,
     },
 }
 
 #[derive(Subcommand)]
 enum ConfigAction {
+    #[command(
+        about = "View current configuration",
+        long_about = "View the current configuration settings.\n\nThis command will display the current configuration settings for dockup in JSON format."
+    )]
     View,
+
+    #[command(
+        about = "Set one key-value pair in the configuration",
+        long_about = "Change one setting in the configuration.\n\nThis command allows you to set a specific key-value pair in the configuration settings."
+    )]
     Set {
-        #[arg(long)]
+        #[arg(long, help = "The configuration key to set")]
         key: String,
-        #[arg(long)]
+        #[arg(long, help = "The value to set for the configuration key")]
         value: String,
     },
     Test,
