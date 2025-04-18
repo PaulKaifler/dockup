@@ -35,12 +35,12 @@ pub fn run_backup(config: &Config) -> Result<Vec<AppSummary>> {
         let repo_tar = create_tar(&app.path, "repo.tar.gz")?;
         created_files.push(repo_tar.clone());
 
-        let _repo_status = if let Err(e) = scp_upload(
+        if let Err(e) = scp_upload(
             config,
             &repo_tar,
             &format!("{}/REPO/repo.tar.gz", remote_base),
         ) {
-            format!("❌ Failed to upload repo tarball: {e}")
+            eprintln!("❌ Failed to upload repo tarball: {e}");
         } else {
             let repo_size = get_file_size(&repo_tar)?;
             let duration = format!(
@@ -55,12 +55,8 @@ pub fn run_backup(config: &Config) -> Result<Vec<AppSummary>> {
                 size: repo_size_str,
                 duration,
             };
-            summaries.push(AppSummary {
-                name: app.name.clone(),
-                volume_statuses: vec![repo_summary],
-            });
-            continue;
-        };
+            volume_statuses.push(repo_summary);
+        }
 
         for vol in &app.volumes {
             let compose_project_volume_name = format!("{}_{}", app.name, vol);
