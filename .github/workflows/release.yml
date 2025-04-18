@@ -8,6 +8,15 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target:
+          [
+            x86_64-unknown-linux-gnu,
+            x86_64-apple-darwin,
+            aarch64-unknown-linux-gnu,
+            aarch64-apple-darwin,
+          ]
 
     steps:
       - name: Checkout code
@@ -18,16 +27,19 @@ jobs:
         with:
           toolchain: stable
 
+      - name: Install target
+        run: rustup target add ${{ matrix.target }}
+
       - name: Build
-        run: cargo build --release
+        run: cargo build --release --target ${{ matrix.target }}
 
       - name: Compress binary
-        run: tar -czf dockup.tar.gz target/release/dockup
+        run: tar -czf dockup-${{ matrix.target }}.tar.gz target/${{ matrix.target }}/release/dockup
 
       - name: Upload release asset
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ github.event.release.upload_url }}
-          asset_path: dockup.tar.gz
-          asset_name: dockup.tar.gz
+          asset_path: dockup-${{ matrix.target }}.tar.gz
+          asset_name: dockup-${{ matrix.target }}.tar.gz
           asset_content_type: application/gzip
