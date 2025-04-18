@@ -1,8 +1,13 @@
 # Dockup
 > A fully automatic docker CLI written in RUST
 
+## Install
+1. Clone this repo
+2. Make sure you have rust installed on your machine
+3. `./install`
+
 ## Setup
-You need to configure the following
+You need to configure the following on first usage. You will be automaticly prompted.
 - `DOCKER_PARENT`: Parent folder of all projects folders (here `docker`). `Dockup` expects the following structure:
 ```
 docker
@@ -38,3 +43,13 @@ docker
    4. Create tar ball with repo content and copy to target
    5. Create tar ball for each volume (with original name) and copy to target
 6. Send job done email
+
+
+## Recommended crontab
+```sh
+crontab -e
+```
+
+```
+5 6,18 * * * /root/dockup/dockup backup
+```
