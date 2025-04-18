@@ -14,6 +14,7 @@ pub struct Config {
     pub ssh_user: String,
     pub ssh_host: String,
     pub ssh_key: String,
+    pub ssh_port: u16,
     pub email_host: String,
     pub email_port: u16,
     pub email_user: String,
@@ -66,6 +67,9 @@ impl Config {
             ssh_user: ask("SSH user")?,
             ssh_host: ask("SSH host")?,
             ssh_key: ask("SSH private key path")?,
+            ssh_port: ask("SSH port (normally 22)")?
+                .parse()
+                .context("Invalid SSH port")?,
             email_host: ask("Email host")?,
             email_port: ask("Email port")?.parse().context("Invalid email port")?,
             email_user: ask("Email user")?,
@@ -90,6 +94,7 @@ impl Config {
             "ssh_user" => self.ssh_user = value.to_string(),
             "ssh_host" => self.ssh_host = value.to_string(),
             "ssh_key" => self.ssh_key = value.to_string(),
+            "ssh_port" => self.ssh_port = value.parse().context("SSH_PORT must be a number")?,
             "email_host" => self.email_host = value.to_string(),
             "email_port" => {
                 self.email_port = value.parse().context("EMAIL_PORT must be a number")?
@@ -108,6 +113,8 @@ impl Config {
             .arg(&self.ssh_key)
             .arg(format!("{}@{}", self.ssh_user, self.ssh_host))
             .arg("echo 'SSH connection successful'")
+            .arg("-p")
+            .arg(self.ssh_port.to_string())
             .output()?;
 
         if output.status.success() {

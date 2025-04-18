@@ -181,8 +181,8 @@ fn get_file_size(path: &PathBuf) -> Result<String> {
 
 fn run_remote_cmd(cfg: &Config, cmd: &str) -> Result<()> {
     let full_cmd = format!(
-        "ssh -i {} {}@{} '{}'",
-        cfg.ssh_key, cfg.ssh_user, cfg.ssh_host, cmd
+        "ssh -i {} {}@{} -p {} '{}'",
+        cfg.ssh_key, cfg.ssh_user, cfg.ssh_host, cfg.ssh_port, cmd
     );
     let status = Command::new("sh").arg("-c").arg(full_cmd).status()?;
     if !status.success() {
