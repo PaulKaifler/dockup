@@ -3,7 +3,9 @@ mod config;
 mod email;
 mod scanner;
 
+use clap::CommandFactory;
 use clap::{Parser, Subcommand};
+use clap_complete::{generate, Shell};
 
 #[derive(Parser)]
 #[command(
@@ -32,6 +34,12 @@ enum Commands {
     Config {
         #[command(subcommand)]
         action: ConfigAction,
+    },
+
+    /// Generate shell completion scripts
+    Completion {
+        #[arg(long)]
+        shell: Shell,
     },
 }
 
@@ -110,6 +118,10 @@ async fn main() -> anyhow::Result<()> {
             result?;
         }
         Commands::DryRun => backup::dry_run(&cfg)?,
+        Commands::Completion { shell } => {
+            use std::io;
+            generate(shell, &mut Cli::command(), "dockup", &mut io::stdout());
+        }
         Commands::Config { action } => match action {
             ConfigAction::View => println!("{:#?}", cfg),
             ConfigAction::Set { key, value } => {
