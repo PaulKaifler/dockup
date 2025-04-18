@@ -3,7 +3,7 @@
 
 ## Setup
 You need to configure the following
-- `DOCKER_PARENT`: Partent folder of all projects folders (here `docker`). `Dockup` expetcs the following structure:
+- `DOCKER_PARENT`: Parent folder of all projects folders (here `docker`). `Dockup` expects the following structure:
 ```
 docker
 ├── project_1
@@ -12,7 +12,7 @@ docker
 ├── project_2
 └── ...
 ```
-- `REMOTE_BACKUP_PATH`: Location on backkup target machine
+- `REMOTE_BACKUP_PATH`: Location on backup target machine
 - `SSH_USER`: User for the backup target machine
 - `SSH_HOST`: Host machine
 - `SSH_KEY`: Authentication for the backup target machine
@@ -28,7 +28,7 @@ docker
 3. For each *backup application* following steps are performed:
    1. Scan `docker-compose` files for used volumes
    2. Add each volume to mount list
-4. `Dockup` will mount all volumes that were previouly detected
+4. `Dockup` will mount all volumes that were previously detected
 5. For each *backup application* following steps are performed:
    1. Create (if not yet existent) folder on backup target with same name as source
    2. Create new folder with current date and time
@@ -37,4 +37,4 @@ docker
       - VOLUMES
    4. Create tar ball with repo content and copy to target
    5. Create tar ball for each volume (with original name) and copy to target
-6. Send job done EMail
+6. Send job done email
