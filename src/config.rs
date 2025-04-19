@@ -77,7 +77,7 @@ impl Config {
     pub async fn load_or_create() -> Result<Self> {
         let path = Self::config_path();
 
-        let mut raw: RawConfig = if path.exists() {
+        let raw: RawConfig = if path.exists() {
             let data = fs::read_to_string(&path)?;
             serde_json::from_str(&data)?
         } else {
