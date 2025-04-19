@@ -1,14 +1,6 @@
 // restore.rs
 
-use std::io::{self, Write};
-
 use crate::config::Config;
-
-pub struct BackupApplication {
-    pub name: String,
-    pub path: String,
-    pub volumes: Vec<String>,
-}
 
 pub fn handle_restore_command(
     config: &Config,

@@ -9,13 +9,30 @@ use yaml_rust::YamlLoader;
 pub struct Volume {
     pub name: String,
     pub path: PathBuf,
+    pub volume_type: VolumeType,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+pub enum VolumeType {
+    Bind,
+    Mount,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub enum BackupType {
     Manual,
     Scheduled,
 }
+
+impl std::fmt::Display for BackupType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BackupType::Manual => write!(f, "Manual"),
+            BackupType::Scheduled => write!(f, "Scheduled"),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct BackupApplication {
     pub name: String,
@@ -86,15 +103,29 @@ pub fn parse_volumes(compose_file: &Path, app_root: &Path) -> Result<Vec<Volume>
                     if let Some(vol_str) = vol.as_str() {
                         if let Some((host_path, _)) = vol_str.split_once(':') {
                             if seen.insert(host_path) {
-                                let abs_path = if host_path.starts_with('/') {
-                                    PathBuf::from(host_path)
+                                let is_bind = host_path.starts_with('/')
+                                    || host_path.starts_with("./")
+                                    || host_path.starts_with("../");
+
+                                let resolved_path = if is_bind {
+                                    if host_path.starts_with('/') {
+                                        PathBuf::from(host_path)
+                                    } else {
+                                        app_root.join(host_path)
+                                    }
                                 } else {
-                                    app_root.join(host_path)
+                                    // If it's not a bind mount, use dummy path for completeness
+                                    PathBuf::from(format!("/var/lib/docker/volumes/{}", host_path))
                                 };
 
                                 volumes.push(Volume {
                                     name: host_path.to_string(),
-                                    path: abs_path,
+                                    path: resolved_path,
+                                    volume_type: if is_bind {
+                                        VolumeType::Bind
+                                    } else {
+                                        VolumeType::Mount
+                                    },
                                 });
                             }
                         }

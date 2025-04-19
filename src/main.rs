@@ -35,7 +35,10 @@ enum Commands {
         about = "Backup all projects",
         long_about = "Performs a backup of all projects.\nUploads the backup to the remote server.\n\nThis command will create a tarball of each project and upload it to the specified remote location."
     )]
-    Backup,
+    Backup {
+        #[arg(short, help = "Mark as scheduled backup")]
+        s: bool,
+    },
 
     #[command(
         about = "Dry run without actual backup",
@@ -154,8 +157,8 @@ async fn main() -> anyhow::Result<()> {
         Commands::Scan => {
             scanner::scan_projects(&cfg)?;
         }
-        Commands::Backup => {
-            let result = backup::run_backup(&cfg);
+        Commands::Backup { s } => {
+            let result = backup::run_backup(&cfg, s);
             match &result {
                 Ok(summaries) => {
                     let mut total_backups = 0;
