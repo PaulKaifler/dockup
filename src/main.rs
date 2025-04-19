@@ -85,12 +85,18 @@ enum ConfigAction {
         long_about = "Test the current configuration settings.\n\nThis command will test the SSH and email configuration settings to ensure they are valid.\n\nIf you don't receive an email, maybe look into your spam."
     )]
     Test,
+
+    #[command(
+        about = "Reset the backup interval",
+        long_about = "Reset the backup interval.\n\nThis command will reset the backup interval to its default value.\n\nThis is a good starting point if you are unsure about the current configuration."
+    )]
+    ResetInterval,
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    let cfg = config::Config::load_or_create().await?;
+    let mut cfg = config::Config::load_or_create().await?;
     logger::init();
 
     match cli.command {
@@ -233,6 +239,10 @@ async fn main() -> anyhow::Result<()> {
             ConfigAction::Test => {
                 cfg.test_ssh().await?;
                 cfg.test_email().await?;
+            }
+            ConfigAction::ResetInterval => {
+                cfg.reset_interval_to_default()?;
+                log::info!("Reset backup interval to default values");
             }
         },
     }
