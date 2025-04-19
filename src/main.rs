@@ -9,6 +9,7 @@ use clap::{Parser, Subcommand};
 use clap_complete::{generate, Shell};
 use std::fs;
 use std::io::Write;
+use tokio::time::Interval;
 
 #[derive(Parser)]
 #[command(
@@ -52,6 +53,15 @@ enum Commands {
     },
 
     #[command(
+        about = "Configure dockup backup interval",
+        long_about = "Configure dockup backup interval.\n\nThis command allows you to view and modify the backup interval settings for dockup."
+    )]
+    Interval {
+        #[command(subcommand)]
+        action: IntervalAction,
+    },
+
+    #[command(
         about = "Setup shell completion",
         long_about = "Setup shell completion for dockup.\n\nThis command will generate a completion script for your shell.\n\nSupported shells: bash, zsh."
     )]
@@ -85,12 +95,32 @@ enum ConfigAction {
         long_about = "Test the current configuration settings.\n\nThis command will test the SSH and email configuration settings to ensure they are valid.\n\nIf you don't receive an email, maybe look into your spam."
     )]
     Test,
+}
+
+#[derive(Subcommand)]
+enum IntervalAction {
+    #[command(
+        about = "View current backup interval",
+        long_about = "View the current backup interval settings.\n\nThis command will display the current backup interval settings for dockup."
+    )]
+    View,
 
     #[command(
-        about = "Reset the backup interval",
-        long_about = "Reset the backup interval.\n\nThis command will reset the backup interval to its default value.\n\nThis is a good starting point if you are unsure about the current configuration."
+        about = "Set backup interval",
+        long_about = "Set the backup interval settings.\n\nThis command allows you to set the backup interval settings for dockup."
     )]
-    ResetInterval,
+    Set {
+        #[arg(long, help = "The configuration key to set")]
+        key: String,
+        #[arg(long, help = "The value to set for the configuration key")]
+        value: String,
+    },
+
+    #[command(
+        about = "Reset backup interval to default",
+        long_about = "Reset the backup interval settings to default values.\n\nThis command will reset the backup interval settings to their default values."
+    )]
+    Reset,
 }
 
 #[tokio::main]
@@ -221,6 +251,21 @@ async fn main() -> anyhow::Result<()> {
                 }
             };
         }
+        Commands::Interval { action } => match action {
+            IntervalAction::View => {
+                let interval = cfg.cron_human_summary();
+                println!("{}", interval);
+            }
+            IntervalAction::Set { key, value } => {
+                let mut cfg = cfg;
+                cfg.set_key_value(&key, &value)?;
+                cfg.save()?;
+                log::info!("Updated backup interval key `{key}` to `{value}`");
+            }
+            IntervalAction::Reset => {
+                cfg.reset_interval_to_default()?;
+            }
+        },
         Commands::Config { action } => match action {
             ConfigAction::View => println!("{:#?}", cfg),
             ConfigAction::Set { key, value } => {
@@ -239,10 +284,6 @@ async fn main() -> anyhow::Result<()> {
             ConfigAction::Test => {
                 cfg.test_ssh().await?;
                 cfg.test_email().await?;
-            }
-            ConfigAction::ResetInterval => {
-                cfg.reset_interval_to_default()?;
-                log::info!("Reset backup interval to default values");
             }
         },
     }

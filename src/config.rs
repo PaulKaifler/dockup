@@ -162,6 +162,83 @@ impl Config {
         log::info!("✅ Interval reset to default and saved to config.");
         Ok(())
     }
+
+    pub fn suggested_cron(&self) -> Option<String> {
+        if self.interval.hour > 0 {
+            let interval = 60 / self.interval.hour;
+            Some(format!("*/{} * * * *", interval)) // every N minutes
+        } else if self.interval.day > 0 {
+            let interval = 24 / self.interval.day;
+            Some(format!("5 */{} * * *", interval)) // every N hours
+        } else if self.interval.week > 0 {
+            let interval = 7 / self.interval.week;
+            let mut days = vec![];
+            for i in 0..self.interval.week {
+                days.push((i * interval) % 7);
+            }
+            Some(format!(
+                "5 0 * * {}",
+                days.iter()
+                    .map(|d| d.to_string())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ))
+        } else if self.interval.month > 0 {
+            let interval = 30 / self.interval.month;
+            Some(format!("5 0 1 */{} *", interval)) // every N months
+        } else if self.interval.year > 0 {
+            let interval = 12 / self.interval.year;
+            Some(format!("5 0 1 1-12/{interval} *"))
+        } else {
+            None
+        }
+    }
+
+    pub fn cron_human_summary(&self) -> String {
+        let mut explanation = String::new();
+        explanation.push_str("📦 Current Backup Retention Policy:\n");
+
+        explanation.push_str(&format!(
+            "  - Hourly backups kept: {}\n",
+            self.interval.hour
+        ));
+        explanation.push_str(&format!("  - Daily backups kept: {}\n", self.interval.day));
+        explanation.push_str(&format!(
+            "  - Weekly backups kept: {}\n",
+            self.interval.week
+        ));
+        explanation.push_str(&format!(
+            "  - Monthly backups kept: {}\n",
+            self.interval.month
+        ));
+        explanation.push_str(&format!(
+            "  - Yearly backups kept: {}\n",
+            self.interval.year
+        ));
+
+        explanation.push('\n');
+
+        if let Some(cron) = self.suggested_cron() {
+            explanation.push_str("🕒 Suggested cron schedule (based on finest active interval):\n");
+            explanation.push_str(&format!("\n   {}\n", cron));
+            explanation.push_str("\nThis schedule will ensure approximately ");
+            if self.interval.hour > 0 {
+                explanation.push_str(&format!("{} backups per hour.", self.interval.hour));
+            } else if self.interval.day > 0 {
+                explanation.push_str(&format!("{} backups per day.", self.interval.day));
+            } else if self.interval.week > 0 {
+                explanation.push_str(&format!("{} backups per week.", self.interval.week));
+            } else if self.interval.month > 0 {
+                explanation.push_str(&format!("{} backups per month.", self.interval.month));
+            } else if self.interval.year > 0 {
+                explanation.push_str(&format!("{} backups per year.", self.interval.year));
+            }
+        } else {
+            explanation.push_str("⚠️  No backup interval is currently configured.\n");
+        }
+
+        explanation
+    }
 }
 
 impl RawConfig {
