@@ -9,6 +9,7 @@ pub struct BackupThingSummary {
     pub status: String,
     pub size: String,
     pub duration: String,
+    pub volume_type: String,
 }
 
 pub struct AppSummary {
@@ -56,63 +57,145 @@ pub fn run_backup(config: &Config) -> Result<Vec<AppSummary>> {
                 status: "✅".to_string(),
                 size: repo_size_str,
                 duration,
+                volume_type: "Repo".to_string(),
             };
             volume_statuses.push(repo_summary);
         }
 
         for vol in &app.volumes {
-            let compose_project_volume_name = format!("{}_{}", app.name, vol);
             let start_volume_time = Local::now();
-            let tar_path = PathBuf::from(format!("/tmp/{}", vol)).with_extension("tar.gz");
-
-            let summary =
-                match create_volume_tar(&compose_project_volume_name, &format!("{vol}.tar.gz")) {
+            let (_success, summary) = if vol.starts_with('.') || vol.starts_with('/') {
+                // 🧱 Handle bind mount
+                let abs_path = app.path.join(vol); // make it absolute
+                match create_tar(&abs_path, &format!("{}.tar.gz", vol.replace('/', "_"))) {
                     Err(e) => {
-                        log::error!("❌ Failed to create volume tarball `{}`: {}", vol, e);
-                        BackupThingSummary {
-                            name: vol.to_string(),
-                            status: "❌ Failed to create tarball".to_string(),
-                            size: "-".to_string(),
-                            duration: "-".to_string(),
+                        log::error!(
+                            "❌ Failed to create tarball for bind mount `{}`: {}",
+                            vol,
+                            e
+                        );
+                        (
+                            false,
+                            BackupThingSummary {
+                                name: vol.to_string(),
+                                status: "❌ Failed to tar bind mount".into(),
+                                size: "-".into(),
+                                duration: "-".into(),
+                                volume_type: "Bind".to_string(),
+                            },
+                        )
+                    }
+                    Ok(tar) => {
+                        created_files.push(tar.clone());
+                        let upload_res = scp_upload(
+                            config,
+                            &tar,
+                            &format!(
+                                "{}/VOLUMES/{}",
+                                remote_base,
+                                tar.file_name().unwrap().to_string_lossy()
+                            ),
+                        );
+                        let duration = format!(
+                            "{:.2} seconds",
+                            (Local::now().timestamp_millis() - start_volume_time.timestamp_millis())
+                                as f64
+                                / 1000.0
+                        );
+                        if let Err(e) = upload_res {
+                            log::error!("❌ Upload failed for bind mount `{}`: {}", vol, e);
+                            (
+                                false,
+                                BackupThingSummary {
+                                    name: vol.to_string(),
+                                    status: "❌ Upload failed".into(),
+                                    size: "-".into(),
+                                    duration,
+                                    volume_type: "Bind".to_string(),
+                                },
+                            )
+                        } else {
+                            let size = get_file_size(&tar)?;
+                            log::info!("✅ Bind mount `{}` backed up", vol);
+                            (
+                                true,
+                                BackupThingSummary {
+                                    name: vol.to_string(),
+                                    status: "✅".into(),
+                                    size,
+                                    duration,
+                                    volume_type: "Bind".to_string(),
+                                },
+                            )
                         }
                     }
-                    Ok(_) => match scp_upload(
-                        config,
-                        &tar_path,
-                        &format!("{}/VOLUMES/{}", remote_base, format!("{vol}.tar.gz")),
-                    ) {
-                        Err(e) => {
-                            log::error!("❌ Failed to upload volume `{}`: {}", vol, e);
+                }
+            } else {
+                // 📦 Handle Docker volume
+                let docker_vol = format!("{}_{}", app.name, vol);
+                match create_volume_tar(&docker_vol, &format!("{vol}.tar.gz")) {
+                    Err(e) => {
+                        log::error!("❌ Failed to create Docker volume tarball `{}`: {}", vol, e);
+                        (
+                            false,
                             BackupThingSummary {
                                 name: vol.to_string(),
-                                status: "❌ Failed to upload".to_string(),
-                                size: "-".to_string(),
-                                duration: "-".to_string(),
-                            }
+                                status: "❌ Failed to tar Docker volume".into(),
+                                size: "-".into(),
+                                duration: "-".into(),
+                                volume_type: "Docker".to_string(),
+                            },
+                        )
+                    }
+                    Ok(tar) => {
+                        created_files.push(tar.clone());
+                        let upload_res = scp_upload(
+                            config,
+                            &tar,
+                            &format!(
+                                "{}/VOLUMES/{}",
+                                remote_base,
+                                tar.file_name().unwrap().to_string_lossy()
+                            ),
+                        );
+                        let duration = format!(
+                            "{:.2} seconds",
+                            (Local::now().timestamp_millis() - start_volume_time.timestamp_millis())
+                                as f64
+                                / 1000.0
+                        );
+                        if let Err(e) = upload_res {
+                            log::error!("❌ Upload failed for Docker volume `{}`: {}", vol, e);
+                            (
+                                false,
+                                BackupThingSummary {
+                                    name: vol.to_string(),
+                                    status: "❌ Upload failed".into(),
+                                    size: "-".into(),
+                                    duration,
+                                    volume_type: "Docker".to_string(),
+                                },
+                            )
+                        } else {
+                            let size = get_file_size(&tar)?;
+                            log::info!("✅ Docker volume `{}` backed up", vol);
+                            (
+                                true,
+                                BackupThingSummary {
+                                    name: vol.to_string(),
+                                    status: "✅".into(),
+                                    size,
+                                    duration,
+                                    volume_type: "Docker".to_string(),
+                                },
+                            )
                         }
-                        Ok(_) => {
-                            let volume_size = get_file_size(&tar_path)?;
-                            let duration = format!(
-                                "{:.2} seconds",
-                                (Local::now().timestamp_millis()
-                                    - start_volume_time.timestamp_millis())
-                                    as f64
-                                    / 1000.0
-                            );
-                            log::info!("✅ Volume `{}` uploaded successfully", vol);
-                            BackupThingSummary {
-                                name: vol.to_string(),
-                                status: "✅".to_string(),
-                                size: volume_size,
-                                duration,
-                            }
-                        }
-                    },
-                };
+                    }
+                }
+            };
 
             volume_statuses.push(summary);
         }
-
         summaries.push(AppSummary {
             name: app.name.clone(),
             volume_statuses,

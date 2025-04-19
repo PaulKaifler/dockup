@@ -59,10 +59,9 @@ fn parse_volumes(path: &Path) -> Result<Vec<String>> {
             if let Some(service_volumes) = service["volumes"].as_vec() {
                 for vol in service_volumes {
                     if let Some(vol_str) = vol.as_str() {
-                        if let Some(target) = vol_str.split(':').next() {
-                            if !target.starts_with("./") && !target.contains('/') {
-                                volumes.push(target.to_string());
-                            }
+                        if let Some((host_path, _container_path)) = vol_str.split_once(':') {
+                            // Push everything – named volume or bind mount
+                            volumes.push(host_path.to_string());
                         }
                     }
                 }
