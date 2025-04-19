@@ -151,11 +151,27 @@ async fn main() -> anyhow::Result<()> {
                                     app_duration += dur;
                                 }
                             }
-                            if let Some(size_part) = vol.size.split_whitespace().next() {
-                                if let Ok(sz) = size_part.parse::<f64>() {
-                                    total_size += sz;
-                                    app_size += sz;
-                                }
+                            let raw_size = vol.size.trim();
+                            let (value_part, unit) = raw_size
+                                .chars()
+                                .partition::<String, _>(|c| c.is_ascii_digit() || *c == '.');
+
+                            if let Ok(raw) = value_part.parse::<f64>() {
+                                let multiplier = if raw_size.contains("KB") {
+                                    1_000.0
+                                } else if raw_size.contains("MB") {
+                                    1_000_000.0
+                                } else if raw_size.contains("GB") {
+                                    1_000_000_000.0
+                                } else if raw_size.contains("B") {
+                                    1.0
+                                } else {
+                                    1.0
+                                };
+
+                                let actual_size = raw * multiplier;
+                                total_size += actual_size;
+                                app_size += actual_size;
                             }
                         }
                         summary_messages.push_str(&format!(
