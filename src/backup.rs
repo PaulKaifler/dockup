@@ -67,7 +67,9 @@ pub fn run_backup(config: &Config) -> Result<Vec<AppSummary>> {
             let (_success, summary) = if vol.starts_with('.') || vol.starts_with('/') {
                 // 🧱 Handle bind mount
                 let abs_path = app.path.join(vol); // make it absolute
-                match create_tar(&abs_path, &format!("{}.tar.gz", vol.replace('/', "_"))) {
+                let sanitized = vol.trim_start_matches("./").replace('/', "_");
+                let tar_name = format!("{sanitized}.tar.gz");
+                match create_tar(&abs_path, &tar_name) {
                     Err(e) => {
                         log::error!(
                             "❌ Failed to create tarball for bind mount `{}`: {}",
@@ -133,7 +135,9 @@ pub fn run_backup(config: &Config) -> Result<Vec<AppSummary>> {
             } else {
                 // 📦 Handle Docker volume
                 let docker_vol = format!("{}_{}", app.name, vol);
-                match create_volume_tar(&docker_vol, &format!("{vol}.tar.gz")) {
+                let sanitized = vol.trim_start_matches("./").replace('/', "_");
+                let tar_name = format!("{sanitized}.tar.gz");
+                match create_volume_tar(&docker_vol, &tar_name) {
                     Err(e) => {
                         log::error!("❌ Failed to create Docker volume tarball `{}`: {}", vol, e);
                         (
