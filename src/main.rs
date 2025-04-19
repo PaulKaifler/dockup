@@ -9,7 +9,6 @@ use clap::{Parser, Subcommand};
 use clap_complete::{generate, Shell};
 use std::fs;
 use std::io::Write;
-use tokio::time::Interval;
 
 #[derive(Parser)]
 #[command(
