@@ -152,7 +152,7 @@ async fn main() -> anyhow::Result<()> {
                                 }
                             }
                             let raw_size = vol.size.trim();
-                            let (value_part, unit) = raw_size
+                            let (value_part, _unit) = raw_size
                                 .chars()
                                 .partition::<String, _>(|c| c.is_ascii_digit() || *c == '.');
 
@@ -178,11 +178,11 @@ async fn main() -> anyhow::Result<()> {
                             "<h2>{}</h2> <p>Duration: {:.2} seconds, Size: {:.2} bytes</p>",
                             summary.name, app_duration, app_size
                         ));
-                        summary_messages.push_str("<table border=\"1\" cellpadding=\"8\" cellspacing=\"0\" style=\"border-collapse: collapse; font-family: sans-serif; font-size: 14px;\"><tr style=\"background-color: #f2f2f2;\"><th>Name</th><th>Status</th><th>Size</th><th>Duration</th></tr>");
+                        summary_messages.push_str("<table border=\"1\" cellpadding=\"8\" cellspacing=\"0\" style=\"border-collapse: collapse; font-family: sans-serif; font-size: 14px;\"><tr style=\"background-color: #f2f2f2;\"><th>Name</th><th>Status</th><th>Type</th><th>Size</th><th>Duration</th></tr>");
                         for vol in &summary.volume_statuses {
                             summary_messages.push_str(&format!(
-                                "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
-                                vol.name, vol.status, vol.size, vol.duration
+                                "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+                                vol.name, vol.status, vol.volume_type, vol.size, vol.duration
                             ));
                         }
                         summary_messages.push_str("</table>");
