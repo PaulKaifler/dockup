@@ -37,7 +37,7 @@ impl Config {
             let data = fs::read_to_string(&path)?;
             Ok(serde_json::from_str(&data)?)
         } else {
-            println!("No configuration found. Let's create one:");
+            log::info!("No configuration found. Let's create one:");
             let config = Config::interactive_create().await?;
             config.save()?;
             Ok(config)
@@ -118,9 +118,9 @@ impl Config {
             .output()?;
 
         if output.status.success() {
-            println!("✅ SSH connection successful");
+            log::info!("✅ SSH connection successful");
         } else {
-            eprintln!(
+            log::error!(
                 "❌ SSH connection failed: {}",
                 String::from_utf8_lossy(&output.stderr)
             );

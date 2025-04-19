@@ -1,6 +1,7 @@
 mod backup;
 mod config;
 mod email;
+mod logger;
 mod scanner;
 
 use clap::CommandFactory;
@@ -90,6 +91,7 @@ enum ConfigAction {
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let cfg = config::Config::load_or_create().await?;
+    logger::init();
 
     match cli.command {
         Commands::Scan => {
@@ -156,7 +158,7 @@ async fn main() -> anyhow::Result<()> {
                     fs::create_dir_all(path.parent().unwrap())?;
                     let mut file = fs::File::create(&path)?;
                     generate(shell, &mut Cli::command(), "dockup", &mut file);
-                    println!("✅ Completion script installed to: {}", path.display());
+                    log::info!("Completion script installed to: {}", path.display());
                     println!(
                         "👉 Add this to your ~/.zshrc if not already there:\n\n  fpath+=~/.zfunc\n  autoload -Uz compinit && compinit\n"
                     );
@@ -172,7 +174,7 @@ async fn main() -> anyhow::Result<()> {
                         if !contents.contains(snippet) {
                             let mut file = fs::OpenOptions::new().append(true).open(&zshrc)?;
                             writeln!(file, "\n{}", snippet)?;
-                            println!("✅ Added completion setup to {}", zshrc.display());
+                            log::info!("✅ Added completion setup to {}", zshrc.display());
                         }
                     }
                     path
@@ -185,7 +187,7 @@ async fn main() -> anyhow::Result<()> {
                     fs::create_dir_all(path.parent().unwrap())?;
                     let mut file = fs::File::create(&path)?;
                     generate(shell, &mut Cli::command(), "dockup", &mut file);
-                    println!("✅ Bash completion written to: {}", path.display());
+                    log::info!("✅ Bash completion written to: {}", path.display());
                     println!(
                         "👉 Add this to your ~/.bashrc:\n\n  source {}\n",
                         path.display()
@@ -202,13 +204,13 @@ async fn main() -> anyhow::Result<()> {
                         if !contents.contains(&snippet) {
                             let mut file = fs::OpenOptions::new().append(true).open(&bashrc)?;
                             writeln!(file, "\n{}", snippet)?;
-                            println!("✅ Added completion setup to {}", bashrc.display());
+                            log::info!("✅ Added completion setup to {}", bashrc.display());
                         }
                     }
                     path
                 }
                 _ => {
-                    println!("❌ Completion setup for {:?} not supported yet.", shell);
+                    log::error!("❌ Completion setup for {:?} not supported yet.", shell);
                     return Ok(());
                 }
             };
@@ -219,7 +221,7 @@ async fn main() -> anyhow::Result<()> {
                 let mut cfg = cfg;
                 cfg.set_key_value(&key, &value)?;
                 cfg.save()?;
-                println!("Updated config key `{key}` to `{value}`");
+                log::info!("Updated config key `{key}` to `{value}`");
                 println!("Do you want to test the new configuration? (y/n):");
                 let mut input = String::new();
                 std::io::stdin().read_line(&mut input)?;

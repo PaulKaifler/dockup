@@ -28,8 +28,8 @@ pub async fn send_summary_email(cfg: &Config, subject: &str, html_body: &str) ->
         .build();
 
     match mailer.send(email).await {
-        Ok(_) => println!("✅ Email sent to {}", cfg.receiver_mail),
-        Err(e) => eprintln!("❌ Failed to send email: {e}"),
+        Ok(_) => log::info!("✅ Email sent to {}", cfg.receiver_mail),
+        Err(e) => log::error!("❌ Failed to send email: {e}"),
     }
 
     Ok(())

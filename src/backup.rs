@@ -24,7 +24,7 @@ pub fn run_backup(config: &Config) -> Result<Vec<AppSummary>> {
     backup_config(config)?;
 
     for app in apps {
-        println!("\n🗂  Backing up: {}", app.name);
+        log::info!("🗂  Backing up: {}", app.name);
         let mut volume_statuses = Vec::new();
         let remote_base = format!("{}/{}/{}", config.remote_backup_path, app.name, timestamp);
         run_remote_cmd(
@@ -42,7 +42,7 @@ pub fn run_backup(config: &Config) -> Result<Vec<AppSummary>> {
             &repo_tar,
             &format!("{}/REPO/repo.tar.gz", remote_base),
         ) {
-            eprintln!("❌ Failed to upload repo tarball: {e}");
+            log::error!("❌ Failed to upload repo tarball: {e}");
         } else {
             let repo_size = get_file_size(&repo_tar)?;
             let duration = format!(
@@ -63,33 +63,54 @@ pub fn run_backup(config: &Config) -> Result<Vec<AppSummary>> {
         for vol in &app.volumes {
             let compose_project_volume_name = format!("{}_{}", app.name, vol);
             let start_volume_time = Local::now();
-            let _volume_status = if let Err(e) =
-                create_volume_tar(&compose_project_volume_name, &format!("{vol}.tar.gz"))
-            {
-                format!("❌ Failed to create tarball for volume `{}`: {e}", vol)
-            } else if let Err(e) = scp_upload(
-                config,
-                &PathBuf::from(format!("/tmp/{}", vol)).with_extension("tar.gz"),
-                &format!("{}/VOLUMES/{}", remote_base, format!("{vol}.tar.gz")),
-            ) {
-                format!("❌ Failed to upload volume `{}`: {e}", vol)
-            } else {
-                let volume_size = get_file_size(
-                    &PathBuf::from(format!("/tmp/{}", vol)).with_extension("tar.gz"),
-                )?;
-                let duration = format!(
-                    "{:.2} seconds",
-                    (Local::now().timestamp_millis() - start_volume_time.timestamp_millis()) as f64
-                        / 1000.0
-                );
-                volume_statuses.push(BackupThingSummary {
-                    name: vol.to_string(),
-                    status: format!("✅ {}", vol),
-                    size: volume_size,
-                    duration,
-                });
-                format!("✅ {}", vol)
-            };
+            let tar_path = PathBuf::from(format!("/tmp/{}", vol)).with_extension("tar.gz");
+
+            let summary =
+                match create_volume_tar(&compose_project_volume_name, &format!("{vol}.tar.gz")) {
+                    Err(e) => {
+                        log::error!("❌ Failed to create volume tarball `{}`: {}", vol, e);
+                        BackupThingSummary {
+                            name: vol.to_string(),
+                            status: "❌ Failed to create tarball".to_string(),
+                            size: "-".to_string(),
+                            duration: "-".to_string(),
+                        }
+                    }
+                    Ok(_) => match scp_upload(
+                        config,
+                        &tar_path,
+                        &format!("{}/VOLUMES/{}", remote_base, format!("{vol}.tar.gz")),
+                    ) {
+                        Err(e) => {
+                            log::error!("❌ Failed to upload volume `{}`: {}", vol, e);
+                            BackupThingSummary {
+                                name: vol.to_string(),
+                                status: "❌ Failed to upload".to_string(),
+                                size: "-".to_string(),
+                                duration: "-".to_string(),
+                            }
+                        }
+                        Ok(_) => {
+                            let volume_size = get_file_size(&tar_path)?;
+                            let duration = format!(
+                                "{:.2} seconds",
+                                (Local::now().timestamp_millis()
+                                    - start_volume_time.timestamp_millis())
+                                    as f64
+                                    / 1000.0
+                            );
+                            log::info!("✅ Volume `{}` uploaded successfully", vol);
+                            BackupThingSummary {
+                                name: vol.to_string(),
+                                status: "✅".to_string(),
+                                size: volume_size,
+                                duration,
+                            }
+                        }
+                    },
+                };
+
+            volume_statuses.push(summary);
         }
 
         summaries.push(AppSummary {
@@ -99,9 +120,9 @@ pub fn run_backup(config: &Config) -> Result<Vec<AppSummary>> {
 
         for f in created_files {
             if let Err(e) = fs::remove_file(&f) {
-                eprintln!("⚠️  Failed to delete temp file {:?}: {e}", f);
+                log::warn!("⚠️  Failed to delete temp file {:?}: {e}", f);
             } else {
-                println!("🧹 Deleted temp file {:?}", f);
+                log::info!("🧹 Deleted temp file {:?}", f);
             }
         }
     }
@@ -112,6 +133,7 @@ pub fn dry_run(config: &Config) -> Result<()> {
     let apps = scan_projects(config)?;
     let timestamp = Local::now().format("%Y%m%d_%H%M").to_string();
 
+    log::info!("Starting dry run...");
     println!("\n🚧 Dry run: dockup config");
     println!(
         "   Would save dockup config to {}/config.json",
@@ -224,8 +246,8 @@ fn backup_config(config: &Config) -> Result<()> {
         .join(".dockup")
         .join("config.json");
 
-    println!(
-        "\n⚙️  Backing up config to: {}/config.json",
+    log::info!(
+        "⚙️  Backing up config to: {}/config.json",
         config.remote_backup_path
     );
     if let Err(e) = scp_upload(
@@ -233,9 +255,9 @@ fn backup_config(config: &Config) -> Result<()> {
         &config_path,
         &format!("{}", config.remote_backup_path),
     ) {
-        eprintln!("❌ Failed to upload config file: {e}");
+        log::error!("❌ Failed to upload config file: {e}");
     }
-    println!("✅ Config file uploaded successfully");
+    log::info!("✅ Config file uploaded successfully");
 
     Ok(())
 }
