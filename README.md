@@ -45,11 +45,17 @@ docker
 6. Send job done email
 
 
-## Recommended crontab
+## Intervals
+You can set the backup interval through the CLI.
+```sh
+dockup interval set --key <hour/day/week/month/year> --value <int>
+```
+
+### Crontab
 ```sh
 crontab -e
 ```
-
-```
-5 6,18 * * * /root/dockup/dockup backup
+Use `dockup` CLI to create a suggestion for a crontab:
+```sh
+dockup interval view
 ```
