@@ -28,7 +28,7 @@ pub fn init() {
         .chain(std::io::stdout());
 
     Dispatch::new()
-        .level(LevelFilter::Debug)
+        .level(LevelFilter::Info)
         .chain(stdout_config)
         .chain(file_config)
         .apply()
