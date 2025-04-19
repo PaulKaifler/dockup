@@ -47,21 +47,25 @@ fn discover_projects(base: &str) -> Result<Vec<BackupApplication>> {
 }
 
 /// Parse volume mounts from a docker-compose.yml file
+use std::collections::HashSet;
+
 fn parse_volumes(path: &Path) -> Result<Vec<String>> {
     let content = fs::read_to_string(path).with_context(|| format!("Failed to read {:?}", path))?;
     let yamls = YamlLoader::load_from_str(&content)?;
     let root = &yamls[0];
 
     let mut volumes = Vec::new();
+    let mut seen = HashSet::new();
 
     if let Some(services) = root["services"].as_hash() {
         for (_, service) in services {
             if let Some(service_volumes) = service["volumes"].as_vec() {
                 for vol in service_volumes {
                     if let Some(vol_str) = vol.as_str() {
-                        if let Some((host_path, _container_path)) = vol_str.split_once(':') {
-                            // Push everything – named volume or bind mount
-                            volumes.push(host_path.to_string());
+                        if let Some((host_path, _)) = vol_str.split_once(':') {
+                            if seen.insert(host_path) {
+                                volumes.push(host_path.to_string());
+                            }
                         }
                     }
                 }
