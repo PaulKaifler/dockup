@@ -21,8 +21,10 @@ pub fn run_backup(config: &Config) -> Result<Vec<AppSummary>> {
     let timestamp = Local::now().format("%Y_%m_%d_%H%M").to_string();
     let mut summaries: Vec<AppSummary> = Vec::new();
 
+    backup_config(config)?;
+
     for app in apps {
-        println!("\n🗂 Backing up: {}", app.name);
+        println!("\n🗂  Backing up: {}", app.name);
         let mut volume_statuses = Vec::new();
         let remote_base = format!("{}/{}/{}", config.remote_backup_path, app.name, timestamp);
         run_remote_cmd(
@@ -110,15 +112,21 @@ pub fn dry_run(config: &Config) -> Result<()> {
     let apps = scan_projects(config)?;
     let timestamp = Local::now().format("%Y%m%d_%H%M").to_string();
 
+    println!("\n🚧 Dry run: dockup config");
+    println!(
+        "   Would save dockup config to {}/config.json",
+        config.remote_backup_path
+    );
+
     for app in apps {
         println!("\n🚧 Dry run: {}", app.name);
         println!(
-            "  Would create remote folder: {}/{}/{}",
+            "   Would create remote folder: {}/{}/{}",
             config.remote_backup_path, app.name, timestamp
         );
-        println!("  Would archive: {:?}", app.path);
+        println!("   Would archive: {:?}", app.path);
         for vol in &app.volumes {
-            println!("  Would archive volume: {}", vol);
+            println!("   Would archive volume: {}", vol);
         }
     }
 
@@ -206,5 +214,28 @@ fn scp_upload(cfg: &Config, local: &PathBuf, remote_path: &str) -> Result<()> {
     if !status.success() {
         anyhow::bail!("SCP upload failed: {:?}", local);
     }
+    Ok(())
+}
+
+// This saves the latest dockup config to the target location
+fn backup_config(config: &Config) -> Result<()> {
+    let config_path = dirs::home_dir()
+        .ok_or_else(|| anyhow::anyhow!("Failed to get home directory"))?
+        .join(".dockup")
+        .join("config.json");
+
+    println!(
+        "\n⚙️  Backing up config to: {}/config.json",
+        config.remote_backup_path
+    );
+    if let Err(e) = scp_upload(
+        config,
+        &config_path,
+        &format!("{}", config.remote_backup_path),
+    ) {
+        eprintln!("❌ Failed to upload config file: {e}");
+    }
+    println!("✅ Config file uploaded successfully");
+
     Ok(())
 }

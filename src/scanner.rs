@@ -16,8 +16,8 @@ pub fn scan_projects(config: &Config) -> Result<Vec<BackupApplication>> {
     let apps = discover_projects(&config.docker_parent)?;
     for app in &apps {
         println!("\n📦 Project: {}", app.name);
-        println!("  Path: {:?}", app.path);
-        println!("  Volumes: {:?}", app.volumes);
+        println!("   Path: {:?}", app.path);
+        println!("   Volumes: {:?}", app.volumes);
     }
     Ok(apps)
 }
