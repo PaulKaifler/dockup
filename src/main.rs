@@ -2,6 +2,7 @@ mod backup;
 mod config;
 mod email;
 mod logger;
+mod restore;
 mod scanner;
 
 use clap::CommandFactory;
@@ -41,6 +42,27 @@ enum Commands {
         long_about = "Performs a dry run of the backup process.\nNo data will be written or transferred.\nUseful for testing and validation."
     )]
     DryRun,
+
+    #[command(
+        about = "Restore a specific project",
+        long_about = "Restores a specific project from backup.\n\nChoose a project to restore from the backup.\nYou can select between different backup versions and what parts of the project to restore."
+    )]
+    Restore {
+        #[arg(long, help = "The name of the project to restore")]
+        project: Option<String>,
+
+        #[arg(
+            long,
+            help = "The version of the backup to restore (if omitted, latest version will be used)"
+        )]
+        version: Option<String>,
+
+        #[arg(long, help = "Restore the repository")]
+        repo: bool,
+
+        #[arg(long, help = "The volumes to restore")]
+        volumes: Vec<String>,
+    },
 
     #[command(
         about = "Configure dockup",
@@ -202,6 +224,14 @@ async fn main() -> anyhow::Result<()> {
             result?;
         }
         Commands::DryRun => backup::dry_run(&cfg)?,
+        Commands::Restore {
+            project,
+            version,
+            repo,
+            volumes,
+        } => {
+            restore::handle_restore_command(&cfg, project, version, repo, volumes);
+        }
         Commands::SetupCompletion { shell } => {
             let _path = match shell {
                 Shell::Zsh => {

@@ -1,14 +1,28 @@
 use crate::config::Config;
 use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use yaml_rust::YamlLoader;
 
-#[derive(Debug)]
-pub struct BackupApplication {
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Volume {
     pub name: String,
     pub path: PathBuf,
-    pub volumes: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum BackupType {
+    Manual,
+    Scheduled,
+}
+#[derive(Serialize, Deserialize, Debug)]
+pub struct BackupApplication {
+    pub name: String,
+    pub timestamp: chrono::DateTime<chrono::Local>,
+    pub backup_type: Option<BackupType>,
+    pub application_path: PathBuf,
+    pub volumes: Vec<Volume>,
 }
 
 /// Entry point for scan
@@ -16,8 +30,11 @@ pub fn scan_projects(config: &Config) -> Result<Vec<BackupApplication>> {
     let apps = discover_projects(&config.docker_parent)?;
     for app in &apps {
         log::info!("📦 Project: {}", app.name);
-        log::info!("   Path: {:?}", app.path);
-        log::info!("   Volumes: {:?}", app.volumes);
+        log::info!("   Path: {:?}", app.application_path);
+        log::info!("   Volumes:");
+        app.volumes.iter().for_each(|volume| {
+            log::info!("      - Name: {}, Path: {:?}", volume.name, volume.path);
+        });
     }
     Ok(apps)
 }
@@ -32,12 +49,14 @@ fn discover_projects(base: &str) -> Result<Vec<BackupApplication>> {
         if path.is_dir() {
             let compose = path.join("docker-compose.yml");
             if compose.exists() {
-                let volumes = parse_volumes(&compose)?;
+                let volumes = parse_volumes(&compose, &path)?;
                 let name = path.file_name().unwrap().to_string_lossy().to_string();
                 projects.push(BackupApplication {
                     name,
-                    path,
-                    volumes,
+                    timestamp: chrono::Local::now(),
+                    backup_type: None,
+                    application_path: path.clone(),
+                    volumes: volumes,
                 });
             }
         }
@@ -49,8 +68,11 @@ fn discover_projects(base: &str) -> Result<Vec<BackupApplication>> {
 /// Parse volume mounts from a docker-compose.yml file
 use std::collections::HashSet;
 
-fn parse_volumes(path: &Path) -> Result<Vec<String>> {
-    let content = fs::read_to_string(path).with_context(|| format!("Failed to read {:?}", path))?;
+/// Parses a Docker Compose file and extracts unique volume host paths,
+/// resolving them relative to the given `app_root`.
+pub fn parse_volumes(compose_file: &Path, app_root: &Path) -> Result<Vec<Volume>> {
+    let content = fs::read_to_string(compose_file)
+        .with_context(|| format!("Failed to read {:?}", compose_file))?;
     let yamls = YamlLoader::load_from_str(&content)?;
     let root = &yamls[0];
 
@@ -64,7 +86,16 @@ fn parse_volumes(path: &Path) -> Result<Vec<String>> {
                     if let Some(vol_str) = vol.as_str() {
                         if let Some((host_path, _)) = vol_str.split_once(':') {
                             if seen.insert(host_path) {
-                                volumes.push(host_path.to_string());
+                                let abs_path = if host_path.starts_with('/') {
+                                    PathBuf::from(host_path)
+                                } else {
+                                    app_root.join(host_path)
+                                };
+
+                                volumes.push(Volume {
+                                    name: host_path.to_string(),
+                                    path: abs_path,
+                                });
                             }
                         }
                     }

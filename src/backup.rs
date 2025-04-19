@@ -1,6 +1,10 @@
-use crate::{config::Config, scanner::scan_projects};
+use crate::{
+    config::Config,
+    scanner::{scan_projects, BackupApplication},
+};
 use anyhow::Result;
 use chrono::Local;
+use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf, process::Command};
 
 #[derive(Debug)]
@@ -19,6 +23,9 @@ pub struct AppSummary {
 
 pub fn run_backup(config: &Config) -> Result<Vec<AppSummary>> {
     let apps = scan_projects(config)?;
+    println!("{:?}", apps);
+
+    return Ok(vec![]);
     let timestamp = Local::now().format("%Y_%m_%d_%H%M").to_string();
     let mut summaries: Vec<AppSummary> = Vec::new();
 
@@ -35,7 +42,7 @@ pub fn run_backup(config: &Config) -> Result<Vec<AppSummary>> {
 
         let mut created_files: Vec<PathBuf> = Vec::new();
         let start_repo_time = Local::now();
-        let repo_tar = create_tar(&app.path, "repo.tar.gz")?;
+        let repo_tar = create_tar(&app.application_path, "repo.tar.gz")?;
         created_files.push(repo_tar.clone());
 
         if let Err(e) = scp_upload(
@@ -64,22 +71,26 @@ pub fn run_backup(config: &Config) -> Result<Vec<AppSummary>> {
 
         for vol in &app.volumes {
             let start_volume_time = Local::now();
-            let (_success, summary) = if vol.starts_with('.') || vol.starts_with('/') {
+            let (_success, summary) = if vol.path.starts_with(".") || vol.path.starts_with("/") {
                 // 🧱 Handle bind mount
-                let abs_path = app.path.join(vol); // make it absolute
-                let sanitized = vol.trim_start_matches("./").replace('/', "_");
+                let abs_path = app.application_path.join(vol.path.clone()); // make it absolute
+                let sanitized = vol
+                    .path
+                    .to_string_lossy()
+                    .trim_start_matches("./")
+                    .replace('/', "_");
                 let tar_name = format!("{sanitized}.tar.gz");
                 match create_tar(&abs_path, &tar_name) {
                     Err(e) => {
                         log::error!(
                             "❌ Failed to create tarball for bind mount `{}`: {}",
-                            vol,
+                            vol.name,
                             e
                         );
                         (
                             false,
                             BackupThingSummary {
-                                name: vol.to_string(),
+                                name: vol.name.to_string(),
                                 status: "❌ Failed to tar bind mount".into(),
                                 size: "-".into(),
                                 duration: "-".into(),
@@ -105,11 +116,11 @@ pub fn run_backup(config: &Config) -> Result<Vec<AppSummary>> {
                                 / 1000.0
                         );
                         if let Err(e) = upload_res {
-                            log::error!("❌ Upload failed for bind mount `{}`: {}", vol, e);
+                            log::error!("❌ Upload failed for bind mount `{}`: {}", vol.name, e);
                             (
                                 false,
                                 BackupThingSummary {
-                                    name: vol.to_string(),
+                                    name: vol.name.to_string(),
                                     status: "❌ Upload failed".into(),
                                     size: "-".into(),
                                     duration,
@@ -118,11 +129,11 @@ pub fn run_backup(config: &Config) -> Result<Vec<AppSummary>> {
                             )
                         } else {
                             let size = get_file_size(&tar)?;
-                            log::info!("✅ Bind mount `{}` backed up", vol);
+                            log::info!("✅ Bind mount `{}` backed up", vol.name);
                             (
                                 true,
                                 BackupThingSummary {
-                                    name: vol.to_string(),
+                                    name: vol.name.to_string(),
                                     status: "✅".into(),
                                     size,
                                     duration,
@@ -134,16 +145,24 @@ pub fn run_backup(config: &Config) -> Result<Vec<AppSummary>> {
                 }
             } else {
                 // 📦 Handle Docker volume
-                let docker_vol = format!("{}_{}", app.name, vol);
-                let sanitized = vol.trim_start_matches("./").replace('/', "_");
+                let docker_vol = format!("{}_{}", app.name, vol.name);
+                let sanitized = vol
+                    .path
+                    .to_string_lossy()
+                    .trim_start_matches("./")
+                    .replace('/', "_");
                 let tar_name = format!("{sanitized}.tar.gz");
                 match create_volume_tar(&docker_vol, &tar_name) {
                     Err(e) => {
-                        log::error!("❌ Failed to create Docker volume tarball `{}`: {}", vol, e);
+                        log::error!(
+                            "❌ Failed to create Docker volume tarball `{}`: {}",
+                            vol.name,
+                            e
+                        );
                         (
                             false,
                             BackupThingSummary {
-                                name: vol.to_string(),
+                                name: vol.name.to_string(),
                                 status: "❌ Failed to tar Docker volume".into(),
                                 size: "-".into(),
                                 duration: "-".into(),
@@ -169,11 +188,11 @@ pub fn run_backup(config: &Config) -> Result<Vec<AppSummary>> {
                                 / 1000.0
                         );
                         if let Err(e) = upload_res {
-                            log::error!("❌ Upload failed for Docker volume `{}`: {}", vol, e);
+                            log::error!("❌ Upload failed for Docker volume `{}`: {}", vol.name, e);
                             (
                                 false,
                                 BackupThingSummary {
-                                    name: vol.to_string(),
+                                    name: vol.name.to_string(),
                                     status: "❌ Upload failed".into(),
                                     size: "-".into(),
                                     duration,
@@ -182,11 +201,11 @@ pub fn run_backup(config: &Config) -> Result<Vec<AppSummary>> {
                             )
                         } else {
                             let size = get_file_size(&tar)?;
-                            log::info!("✅ Docker volume `{}` backed up", vol);
+                            log::info!("✅ Docker volume `{}` backed up", vol.name);
                             (
                                 true,
                                 BackupThingSummary {
-                                    name: vol.to_string(),
+                                    name: vol.name.to_string(),
                                     status: "✅".into(),
                                     size,
                                     duration,
@@ -233,9 +252,9 @@ pub fn dry_run(config: &Config) -> Result<()> {
             "   Would create remote folder: {}/{}/{}",
             config.remote_backup_path, app.name, timestamp
         );
-        println!("   Would archive: {:?}", app.path);
+        println!("   Would archive: {:?}", app.application_path);
         for vol in &app.volumes {
-            println!("   Would archive volume: {}", vol);
+            println!("   Would archive volume: {}", vol.name);
         }
     }
 
@@ -346,5 +365,17 @@ fn backup_config(config: &Config) -> Result<()> {
     }
     log::info!("✅ Config file uploaded successfully");
 
+    Ok(())
+}
+
+pub fn save_metadata(backup: &BackupApplication) -> std::io::Result<()> {
+    use std::fs;
+    use std::io::Write;
+
+    let meta_path = backup.application_path.join("meta.json");
+    let meta_file = fs::File::create(&meta_path)?;
+    serde_json::to_writer_pretty(meta_file, backup)?;
+
+    println!("Backup metadata saved at {}", meta_path.display());
     Ok(())
 }
