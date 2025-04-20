@@ -40,6 +40,25 @@ pub fn handle_restore_command(
     }
 }
 
+fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage((100 - percent_y) / 2),
+            Constraint::Percentage(percent_y),
+            Constraint::Percentage((100 - percent_y) / 2),
+        ])
+        .split(area);
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage((100 - percent_x) / 2),
+            Constraint::Percentage(percent_x),
+            Constraint::Percentage((100 - percent_x) / 2),
+        ])
+        .split(popup_layout[1])[1]
+}
+
 fn enter_interactive_shell(config: &Config) -> io::Result<()> {
     let mut terminal = ratatui::init();
     let mut app = futures::executor::block_on(RestoreApp::new(config));
@@ -70,6 +89,7 @@ pub struct RestoreApp {
     selected_column: Column,
     selected_volumes: HashSet<String>,
     toggled_repo: bool,
+    show_help: bool,
 }
 
 #[derive(PartialEq)]
@@ -103,6 +123,7 @@ impl RestoreApp {
             selected_column: Column::Projects,
             selected_volumes: HashSet::new(),
             toggled_repo: false,
+            show_help: false,
         }
     }
 }
@@ -142,6 +163,12 @@ impl RestoreApp {
         self.draw_volumes(chunk[2], frame.buffer_mut());
         self.draw_summary(layout[1], frame.buffer_mut());
         self.draw_tooltip(layout[2], frame.buffer_mut());
+        if self.show_help {
+            let area = centered_rect(60, 20, frame.area());
+            use ratatui::widgets::Clear;
+            Clear.render(area, frame.buffer_mut());
+            self.draw_floating_help(area, frame.buffer_mut());
+        }
     }
     fn handle_events(&mut self) -> io::Result<()> {
         match event::read()? {
@@ -156,6 +183,10 @@ impl RestoreApp {
     fn handle_key_event(&mut self, key_event: KeyEvent) {
         if key_event.code == KeyCode::Esc || key_event.code == KeyCode::Char('q') {
             self.exit();
+            return;
+        }
+        if key_event.code == KeyCode::Char('h') {
+            self.show_help = !self.show_help;
             return;
         }
         match self.selected_column {
@@ -340,6 +371,26 @@ impl RestoreApp {
         let paragraph =
             Paragraph::new(tooltip_text.blue().bold()).wrap(ratatui::widgets::Wrap { trim: false });
         paragraph.render(layout, buf);
+    }
+
+    fn draw_floating_help(&self, area: Rect, buf: &mut Buffer) {
+        let text = Text::from(vec![
+            Line::from("← →: switch column"),
+            Line::from("↑ ↓: navigate"),
+            Line::from("SPACE: select volume"),
+            Line::from("ENTER: restore"),
+            Line::from("a: select all    d: deselect all"),
+            Line::from("r: toggle repo   q: quit"),
+            Line::from("h: toggle help"),
+        ]);
+        Paragraph::new(text)
+            .block(
+                Block::default()
+                    .title("Help")
+                    .borders(ratatui::widgets::Borders::ALL)
+                    .style(Style::default().bg(ratatui::style::Color::White)),
+            )
+            .render(area, buf);
     }
 }
 
