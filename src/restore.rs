@@ -14,29 +14,7 @@ use ratatui::{
 
 use crate::logger::disable_stdout_logging;
 use crate::logger::enable_stdout_logging;
-use crate::{
-    config::Config,
-    scanner::{BackupApplication, Volume},
-    utils::run_remote_cmd_with_output,
-};
-
-struct RestoreConfig {
-    project: Option<String>,
-    version: Option<String>,
-    repo: bool,
-    volumes: Vec<Volume>,
-}
-
-impl RestoreConfig {
-    fn emppty() -> Self {
-        Self {
-            project: None,
-            version: None,
-            repo: false,
-            volumes: Vec::new(),
-        }
-    }
-}
+use crate::{config::Config, scanner::BackupApplication, utils::run_remote_cmd_with_output};
 
 pub fn handle_restore_command(
     config: &Config,
@@ -85,7 +63,6 @@ fn enter_interactive_shell(config: &Config) -> io::Result<()> {
 pub struct RestoreApp {
     backups: Vec<BackupApplication>,
     projects: Vec<String>,
-    config: RestoreConfig,
     exit: bool,
     selected_project_index: usize,
     selected_backup_index: usize,
@@ -111,7 +88,6 @@ impl RestoreApp {
         Self {
             backups,
             projects,
-            config: RestoreConfig::emppty(),
             exit: false,
             selected_project_index: 0,
             selected_backup_index: 0,
