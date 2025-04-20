@@ -79,7 +79,7 @@ fn enter_interactive_shell(config: &Config) -> io::Result<()> {
     Ok(())
 }
 
-pub struct RestoreApp {
+pub struct RestoreApp<'a> {
     backups: Vec<BackupApplication>,
     projects: Vec<String>,
     exit: bool,
@@ -90,6 +90,8 @@ pub struct RestoreApp {
     selected_volumes: HashSet<String>,
     toggled_repo: bool,
     show_help: bool,
+    restore_message: Vec<Line<'a>>,
+    show_restore_popup: bool,
 }
 
 #[derive(PartialEq)]
@@ -99,7 +101,7 @@ enum Column {
     Volumes,
 }
 
-impl RestoreApp {
+impl<'a> RestoreApp<'a> {
     pub async fn new(config: &Config) -> Self {
         let backups = scan_backup_target(config).await.unwrap_or_else(|e| {
             eprintln!("❌ Error scanning backup target: {e}");
@@ -124,11 +126,13 @@ impl RestoreApp {
             selected_volumes: HashSet::new(),
             toggled_repo: false,
             show_help: false,
+            restore_message: Vec::new(),
+            show_restore_popup: false,
         }
     }
 }
 
-impl RestoreApp {
+impl<'a> RestoreApp<'a> {
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> io::Result<()> {
         log::debug!("{:?}", self.backups);
         while !self.exit {
@@ -169,6 +173,18 @@ impl RestoreApp {
             Clear.render(area, frame.buffer_mut());
             self.draw_floating_help(area, frame.buffer_mut());
         }
+        if self.show_restore_popup {
+            let popup = centered_rect(60, 30, frame.area());
+            // clear any background behind it
+            ratatui::widgets::Clear.render(popup, frame.buffer_mut());
+            Paragraph::new(Text::from(self.restore_message.clone()))
+                .block(
+                    Block::default()
+                        .title("Restore")
+                        .borders(ratatui::widgets::Borders::ALL),
+                )
+                .render(popup, frame.buffer_mut());
+        }
     }
     fn handle_events(&mut self) -> io::Result<()> {
         match event::read()? {
@@ -205,7 +221,11 @@ impl RestoreApp {
                 self.selected_volumes = HashSet::new();
             }
             KeyCode::Enter => {
-                todo!("Implement restore logic here");
+                if self.show_restore_popup {
+                    self.start_restore_process();
+                } else {
+                    self.restore_selection();
+                }
             }
             _ => {}
         }
@@ -412,9 +432,43 @@ impl RestoreApp {
             )
             .render(area, buf);
     }
+
+    fn restore_selection(&mut self) {
+        let project = &self.projects[self.selected_project_index];
+        let backup = get_backups(&self.backups, project)[self.selected_date_index].clone();
+
+        let vols: Vec<String> = self.selected_volumes.iter().cloned().collect();
+        let repo = vols.contains(&"REPO".to_string());
+        let actual = vols.into_iter().filter(|v| v != "REPO").collect::<Vec<_>>();
+
+        let mut lines = Vec::new();
+        lines.push(Line::from(format!("🔁 Restoring project: {}", project)));
+        lines.push(Line::from(format!(
+            "📅 Date: {}",
+            backup.timestamp.format("%d. %B %Y %H:%M:%S")
+        )));
+        lines.push(Line::from(format!("📦 Volumes: {}", actual.join(", "))));
+        lines.push(Line::from(format!(
+            "📁 Repo: {}",
+            if repo { "yes" } else { "no" }
+        )));
+
+        self.restore_message = lines;
+        self.show_restore_popup = true;
+
+        // …remove your scp/tar loops here
+    }
+
+    fn start_restore_process(&mut self) {
+        // Placeholder for actual restore logic
+        self.restore_message
+            .push(Line::from("Starting restore process..."));
+        // Optionally, hide popup after starting
+        self.show_restore_popup = false;
+    }
 }
 
-impl Widget for &RestoreApp {
+impl<'a> Widget for &'a RestoreApp<'a> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let title = Line::from(" Dockup Restore ".bold());
         let instructions = Line::from(vec![
