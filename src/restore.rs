@@ -308,18 +308,17 @@ impl RestoreApp {
 
     fn draw_summary(&self, area: Rect, buf: &mut Buffer) {
         let summary_text = format!(
-            "Selected Project: {}\nSelected Backup: {}\nSelected Volume: {}",
+            "Selected Project: {}\nSelected Backup:  {}\nSelected Volume:  {}",
             self.projects[self.selected_project_index],
             get_backups(&self.backups, &self.projects[self.selected_project_index])
                 [self.selected_date_index]
                 .timestamp
                 .format("%d. %B %Y %H:%M:%S"),
-            get_backups(&self.backups, &self.projects[self.selected_project_index])
-                [self.selected_date_index]
-                .volumes
-                .get(self.selected_volume_index)
-                .map_or("None".to_string(), |v| v.name.clone())
-                .clone()
+            self.selected_volumes
+                .iter()
+                .cloned()
+                .collect::<Vec<String>>()
+                .join(", ")
         );
 
         Paragraph::new(Text::from(summary_text))
