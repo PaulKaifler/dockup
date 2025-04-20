@@ -12,6 +12,8 @@ use ratatui::{
     DefaultTerminal, Frame,
 };
 
+use crate::logger::disable_stdout_logging;
+use crate::logger::enable_stdout_logging;
 use crate::{
     config::Config,
     scanner::{BackupApplication, Volume},
@@ -63,7 +65,21 @@ pub fn handle_restore_command(
 fn enter_interactive_shell(config: &Config) -> io::Result<()> {
     let mut terminal = ratatui::init();
     let mut app = futures::executor::block_on(RestoreApp::new(config));
-    app.run(&mut terminal)
+
+    // First render may get corrupted due to logging output
+    terminal.draw(|frame| app.draw(frame))?;
+
+    // Disable log output once TUI begins
+    disable_stdout_logging();
+
+    // Clear any leftover log noise with a full redraw
+    terminal.clear()?;
+    terminal.draw(|frame| app.draw(frame))?;
+
+    app.run(&mut terminal)?;
+    ratatui::restore();
+    enable_stdout_logging();
+    Ok(())
 }
 
 pub struct RestoreApp {
