@@ -455,6 +455,8 @@ impl<'a> RestoreApp<'a> {
             "📁 Repo: {}",
             if repo { "yes" } else { "no" }
         )));
+        lines.push(Line::from(""));
+        lines.push(Line::from("Press ENTER to confirm restore"));
 
         self.restore_message = lines;
         self.show_restore_popup = true;
@@ -629,11 +631,15 @@ impl<'a> RestoreApp<'a> {
         }
 
         for name in items {
+            self.restore_message
+                .push(Line::from(format!("🚧 Restoring Repo")));
             if name == "REPO" {
                 let remote = format!("{}/REPO/repo.tar.gz", remote_base);
                 let tmp = std::env::temp_dir().join("repo.tar.gz");
 
                 // Download
+                self.restore_message
+                    .push(Line::from(format!("⏬ Downloading repo")));
                 let output = Command::new("scp")
                     .args(&[
                         "-i",
@@ -656,6 +662,9 @@ impl<'a> RestoreApp<'a> {
                     continue;
                 }
 
+                self.restore_message
+                    .push(Line::from(format!("📂 Extracting repo")));
+
                 // Extract
                 let dest = &backup.application_path;
                 fs::remove_dir_all(dest).ok();
@@ -672,12 +681,17 @@ impl<'a> RestoreApp<'a> {
                         .push(Line::from("⚠️ repo extract failed"));
                 }
             } else {
+                self.restore_message
+                    .push(Line::from(format!("🚧 Restoring volume: {}", name)));
                 // Find Volume entry
                 if let Some(v) = backup.volumes.iter().find(|v| &v.name == &name) {
                     // remote tarball path uses underscores for slashes
                     let tarname = format!("{}.tar.gz", v.path.to_string_lossy().replace('/', "_"));
                     let remote = format!("{}/VOLUMES/{}", remote_base, tarname);
                     let tmp = std::env::temp_dir().join(&tarname);
+
+                    self.restore_message
+                        .push(Line::from(format!("⏬ Downloading {}", name)));
 
                     let output = Command::new("scp")
                         .args(&[
@@ -700,6 +714,9 @@ impl<'a> RestoreApp<'a> {
                             .push(Line::from(format!("⚠️ failed scp {}: {}", name, err)));
                         continue;
                     }
+
+                    self.restore_message
+                        .push(Line::from(format!("📂 Extracting {}", name)));
 
                     // destroy and recreate target
                     let dest = &v.path;
