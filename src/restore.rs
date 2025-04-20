@@ -61,7 +61,7 @@ fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
 
 fn enter_interactive_shell(config: &Config) -> io::Result<()> {
     let mut terminal = ratatui::init();
-    let mut app = futures::executor::block_on(RestoreApp::new(config));
+    let mut app = futures::executor::block_on(RestoreApp::new(&config));
 
     // First render may get corrupted due to logging output
     terminal.draw(|frame| app.draw(frame))?;
@@ -80,6 +80,7 @@ fn enter_interactive_shell(config: &Config) -> io::Result<()> {
 }
 
 pub struct RestoreApp<'a> {
+    config: Config,
     backups: Vec<BackupApplication>,
     projects: Vec<String>,
     exit: bool,
@@ -116,6 +117,7 @@ impl<'a> RestoreApp<'a> {
             .collect();
 
         Self {
+            config: config.clone(),
             backups,
             projects,
             exit: false,
@@ -455,16 +457,6 @@ impl<'a> RestoreApp<'a> {
 
         self.restore_message = lines;
         self.show_restore_popup = true;
-
-        // …remove your scp/tar loops here
-    }
-
-    fn start_restore_process(&mut self) {
-        // Placeholder for actual restore logic
-        self.restore_message
-            .push(Line::from("Starting restore process..."));
-        // Optionally, hide popup after starting
-        self.show_restore_popup = false;
     }
 }
 
@@ -611,4 +603,115 @@ fn style_checkboxes<'a>(
             Line::from(format!("{}{}", checkbox, item)).style(style)
         })
         .collect()
+}
+
+use std::{fs, process::Command};
+
+impl<'a> RestoreApp<'a> {
+    /// Kick off the actual scp/tar restore now that user has confirmed.
+    fn start_restore_process(&mut self) -> io::Result<()> {
+        let project = &self.projects[self.selected_project_index];
+        let backups = get_backups(&self.backups, project);
+        let backup = &backups[self.selected_date_index];
+
+        // Folder name matches folder on the server
+        let folder = backup.timestamp.format("%Y_%m_%d_%H%M%S").to_string();
+        let remote_base = format!(
+            "{}/{}/{}",
+            self.config.remote_backup_path, backup.name, folder
+        );
+
+        // Build list: volumes + "REPO" if toggled
+        let mut items: Vec<String> = self.selected_volumes.iter().cloned().collect();
+        if self.toggled_repo && !items.contains(&"REPO".into()) {
+            items.push("REPO".into());
+        }
+
+        for name in items {
+            if name == "REPO" {
+                let remote = format!("{}/REPO/repo.tar.gz", remote_base);
+                let tmp = std::env::temp_dir().join("repo.tar.gz");
+
+                // Download
+                let status = Command::new("scp")
+                    .args(&[
+                        "-i",
+                        &self.config.ssh_key,
+                        "-P",
+                        &self.config.ssh_port.to_string(),
+                        &format!(
+                            "{}@{}:{}",
+                            self.config.ssh_user, self.config.ssh_host, remote
+                        ),
+                        tmp.to_str().unwrap(),
+                    ])
+                    .status()?;
+                if !status.success() {
+                    self.restore_message
+                        .push(Line::from("⚠️ failed to scp repo"));
+                    continue;
+                }
+
+                // Extract
+                let dest = &backup.application_path;
+                fs::remove_dir_all(dest).ok();
+                fs::create_dir_all(dest)?;
+                let status = Command::new("tar")
+                    .args(&["-xzf", tmp.to_str().unwrap(), "-C", dest.to_str().unwrap()])
+                    .status()?;
+                if status.success() {
+                    self.restore_message.push(Line::from("✅ repo restored"));
+                } else {
+                    self.restore_message
+                        .push(Line::from("⚠️ repo extract failed"));
+                }
+            } else {
+                // Find Volume entry
+                if let Some(v) = backup.volumes.iter().find(|v| &v.name == &name) {
+                    // remote tarball path uses underscores for slashes
+                    let tarname = format!("{}.tar.gz", v.path.to_string_lossy().replace('/', "_"));
+                    let remote = format!("{}/VOLUMES/{}", remote_base, tarname);
+                    let tmp = std::env::temp_dir().join(&tarname);
+
+                    let status = Command::new("scp")
+                        .args(&[
+                            "-i",
+                            &self.config.ssh_key,
+                            "-P",
+                            &self.config.ssh_port.to_string(),
+                            &format!(
+                                "{}@{}:{}",
+                                self.config.ssh_user, self.config.ssh_host, remote
+                            ),
+                            tmp.to_str().unwrap(),
+                        ])
+                        .status()?;
+                    if !status.success() {
+                        self.restore_message
+                            .push(Line::from(format!("⚠️ failed scp {}", name)));
+                        continue;
+                    }
+
+                    // destroy and recreate target
+                    let dest = &v.path;
+                    fs::remove_dir_all(dest).ok();
+                    fs::create_dir_all(dest)?;
+                    // extract
+                    let status = Command::new("tar")
+                        .args(&["-xzf", tmp.to_str().unwrap(), "-C", dest.to_str().unwrap()])
+                        .status()?;
+                    if status.success() {
+                        self.restore_message
+                            .push(Line::from(format!("✅ {}", name)));
+                    } else {
+                        self.restore_message
+                            .push(Line::from(format!("⚠️ extract {}", name)));
+                    }
+                }
+            }
+        }
+
+        // keep popup visible so user sees the messages
+        Ok(())
+    }
 }

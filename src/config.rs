@@ -33,7 +33,7 @@ pub struct RawIntervalConfig {
     pub year: Option<u32>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Config {
     pub docker_parent: String,
     pub remote_backup_path: String,
@@ -49,7 +49,7 @@ pub struct Config {
     pub interval: IntervalConfig,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 pub struct IntervalConfig {
     pub hour: u32,
     pub day: u32,
