@@ -4,6 +4,7 @@ mod email;
 mod logger;
 mod restore;
 mod scanner;
+mod utils;
 
 use clap::CommandFactory;
 use clap::{Parser, Subcommand};
