@@ -260,46 +260,40 @@ async fn scan_backup_target(config: &Config) -> anyhow::Result<Vec<BackupApplica
 
     for app in application_folders {
         log::debug!("Found backup application: {}", app);
-        let folders = run_remote_cmd_with_output(
+        let listing = run_remote_cmd_with_output(
             config,
             &format!("ls -1 {}/{}", config.remote_backup_path, app),
         )
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-        let just_folders = folders
+        let backup_folders = listing
             .lines()
             .filter(|line| !line.contains("."))
             .collect::<Vec<_>>();
-        log::debug!("Found backup folders: {:?}", just_folders);
-        for dir in just_folders {
-            log::debug!("Found backup directory: {}", dir);
-            log::debug!(
-                "meta.json path: {}/{}/meta.json",
-                config.remote_backup_path,
-                dir
-            );
+        log::debug!("Found backup folders: {:?}", backup_folders);
+        for backup_folder in backup_folders {
             let meta = run_remote_cmd_with_output(
                 config,
                 &format!(
                     "cat {}/{}/{}/meta.json",
-                    config.remote_backup_path, app, dir
+                    config.remote_backup_path, app, backup_folder
                 ),
             );
 
-            if let Ok(json) = meta {
-                if let Ok(mut app) = serde_json::from_str::<BackupApplication>(&json) {
-                    // (Optional) fallback timestamp
-                    if app.timestamp.timestamp() == 0 {
-                        if let Ok(parsed) = chrono::DateTime::parse_from_str(dir, "%Y_%m_%d_%H%M%S")
-                        {
-                            app.timestamp = parsed.with_timezone(&chrono::Local);
-                        }
-                    }
-                    backups.push(app);
+            let meta = match meta {
+                Ok(meta) => {
+                    log::debug!("Found meta.json: {}", meta);
+                    let meta: BackupApplication = serde_json::from_str(&meta)
+                        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+                    log::debug!("Parsed meta.json: {:?}", meta);
+                    meta
                 }
-            }
+                Err(e) => {
+                    log::error!("Failed to read meta.json: {}", e);
+                    continue;
+                }
+            };
+            backups.push(meta);
         }
     }
-    log::debug!("Summary of backups: {:?}", backups);
-    log::info!("Found {} backups", backups.len());
     Ok(backups)
 }
