@@ -344,7 +344,7 @@ impl RestoreApp {
 
     fn draw_summary(&self, area: Rect, buf: &mut Buffer) {
         let summary_text = format!(
-            "Selected Project: {}\nSelected Backup:  {}\nSelected Volume:  {}",
+            "Selected Project:   {}\nSelected Backup:    {}\nSelected Volume(s): {}",
             self.projects[self.selected_project_index],
             get_backups(&self.backups, &self.projects[self.selected_project_index])
                 [self.selected_date_index]
