@@ -177,22 +177,58 @@ impl RestoreApp {
                     if self.selected_backup_index > 0 {
                         self.selected_backup_index -= 1;
                     }
+                    self.selected_volume_index = 0;
                 }
                 KeyCode::Down => {
                     if self.selected_backup_index < self.backups.len() - 1 {
                         self.selected_backup_index += 1;
                     }
+                    self.selected_volume_index = 0;
                 }
                 KeyCode::Left => {
                     self.selected_column = Column::Projects;
                 }
                 KeyCode::Right => {
                     self.selected_column = Column::Volumes;
-                    self.selected_volume_index = 0;
                 }
                 _ => {}
             },
-            Column::Volumes => todo!(),
+            Column::Volumes => match key_event.code {
+                KeyCode::Up => {
+                    if self.selected_volume_index > 0 {
+                        self.selected_volume_index -= 1;
+                    }
+                }
+                KeyCode::Down => {
+                    if self.selected_volume_index
+                        < self.backups[self.selected_backup_index].volumes.len() - 1
+                    {
+                        self.selected_volume_index += 1;
+                    }
+                }
+                KeyCode::Left => {
+                    self.selected_column = Column::Dates;
+                    self.toggled_repo = false;
+                    self.selected_volumes = HashSet::new();
+                }
+                KeyCode::Right => {
+                    self.selected_column = Column::Projects;
+                }
+                KeyCode::Char(' ') => {
+                    let selected_volume = &self.backups[self.selected_backup_index].volumes
+                        [self.selected_volume_index];
+                    if selected_volume.name == "repo" {
+                        self.toggled_repo = !self.toggled_repo;
+                    } else {
+                        if self.selected_volumes.contains(&selected_volume.name) {
+                            self.selected_volumes.remove(&selected_volume.name);
+                        } else {
+                            self.selected_volumes.insert(selected_volume.name.clone());
+                        }
+                    }
+                }
+                _ => {}
+            },
         }
     }
 
