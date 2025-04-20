@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::io;
+use std::process::Stdio;
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
@@ -633,7 +634,7 @@ impl<'a> RestoreApp<'a> {
                 let tmp = std::env::temp_dir().join("repo.tar.gz");
 
                 // Download
-                let status = Command::new("scp")
+                let output = Command::new("scp")
                     .args(&[
                         "-i",
                         &self.config.ssh_key,
@@ -645,10 +646,13 @@ impl<'a> RestoreApp<'a> {
                         ),
                         tmp.to_str().unwrap(),
                     ])
-                    .status()?;
-                if !status.success() {
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::piped())
+                    .output()?;
+                if !output.status.success() {
+                    let err = String::from_utf8_lossy(&output.stderr);
                     self.restore_message
-                        .push(Line::from("⚠️ failed to scp repo"));
+                        .push(Line::from(format!("⚠️ failed scp repo: {}", err)));
                     continue;
                 }
 
@@ -658,6 +662,8 @@ impl<'a> RestoreApp<'a> {
                 fs::create_dir_all(dest)?;
                 let status = Command::new("tar")
                     .args(&["-xzf", tmp.to_str().unwrap(), "-C", dest.to_str().unwrap()])
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::piped())
                     .status()?;
                 if status.success() {
                     self.restore_message.push(Line::from("✅ repo restored"));
@@ -673,7 +679,7 @@ impl<'a> RestoreApp<'a> {
                     let remote = format!("{}/VOLUMES/{}", remote_base, tarname);
                     let tmp = std::env::temp_dir().join(&tarname);
 
-                    let status = Command::new("scp")
+                    let output = Command::new("scp")
                         .args(&[
                             "-i",
                             &self.config.ssh_key,
@@ -685,10 +691,13 @@ impl<'a> RestoreApp<'a> {
                             ),
                             tmp.to_str().unwrap(),
                         ])
-                        .status()?;
-                    if !status.success() {
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::piped())
+                        .output()?;
+                    if !output.status.success() {
+                        let err = String::from_utf8_lossy(&output.stderr);
                         self.restore_message
-                            .push(Line::from(format!("⚠️ failed scp {}", name)));
+                            .push(Line::from(format!("⚠️ failed scp {}: {}", name, err)));
                         continue;
                     }
 
@@ -699,6 +708,8 @@ impl<'a> RestoreApp<'a> {
                     // extract
                     let status = Command::new("tar")
                         .args(&["-xzf", tmp.to_str().unwrap(), "-C", dest.to_str().unwrap()])
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::piped())
                         .status()?;
                     if status.success() {
                         self.restore_message
