@@ -134,7 +134,7 @@ impl RestoreApp {
             .split(layout[0]);
 
         self.draw_projects(chunk[0], frame.buffer_mut());
-        self.draw_backups(chunk[1], frame.buffer_mut());
+        self.draw_dates(chunk[1], frame.buffer_mut());
         self.draw_volumes(chunk[2], frame.buffer_mut());
         self.draw_summary(layout[1], frame.buffer_mut());
     }
@@ -254,9 +254,9 @@ impl RestoreApp {
             .render(area, buf);
     }
 
-    fn draw_backups(&self, area: Rect, buf: &mut Buffer) {
-        let backups = get_backups(&self.backups, &self.projects[self.selected_project_index]);
-        let binding = backups
+    fn draw_dates(&self, area: Rect, buf: &mut Buffer) {
+        let dates = get_backups(&self.backups, &self.projects[self.selected_project_index]);
+        let binding = dates
             .iter()
             .map(|app| app.timestamp.format("%d. %B %Y %H:%M:%S").to_string())
             .collect::<Vec<String>>();
@@ -276,57 +276,17 @@ impl RestoreApp {
     }
 
     fn draw_volumes(&self, area: Rect, buf: &mut Buffer) {
-        let selected_project = &self.projects[self.selected_project_index];
-        let selected_backups: Vec<_> = self
-            .backups
-            .iter()
-            .filter(|b| &b.name == selected_project)
-            .collect();
-
-        let mut volume_lines: Vec<Line> =
-            if let Some(selected_backup) = selected_backups.get(self.selected_date_index) {
-                selected_backup
-                    .volumes
-                    .iter()
-                    .enumerate()
-                    .map(|(i, volume)| {
-                        let style = if self.selected_column == Column::Volumes
-                            && i == self.selected_volume_index
-                        {
-                            Style::default().add_modifier(ratatui::style::Modifier::REVERSED)
-                        } else {
-                            Style::default()
-                        };
-                        let checkbox = if self.selected_volumes.contains(&volume.name) {
-                            "[x] "
-                        } else {
-                            "[ ] "
-                        };
-                        Line::from(format!("{}{}", checkbox, volume.name)).style(style)
-                    })
-                    .collect()
-            } else {
-                Vec::new()
-            };
-
-        let repo_index = selected_backups
-            .get(self.selected_date_index)
-            .map_or(0, |b| b.volumes.len());
-        let repo_style = if self.selected_column == Column::Volumes
-            && self.selected_volume_index == repo_index
-        {
-            Style::default().add_modifier(ratatui::style::Modifier::REVERSED)
-        } else {
-            Style::default()
-        };
-        let repo_checkbox = if self.selected_volumes.contains("repo") {
-            "[x] "
-        } else {
-            "[ ] "
-        };
-        volume_lines.push(Line::from(format!("{}REPO", repo_checkbox)).style(repo_style));
-
-        Paragraph::new(Text::from(volume_lines))
+        let volumes = get_volumes(
+            get_backups(&self.backups, &self.projects[self.selected_project_index])
+                [self.selected_date_index]
+                .clone(),
+        );
+        let volume_names: Vec<Line> = style_selected(
+            &volumes,
+            self.selected_volume_index,
+            self.selected_column == Column::Volumes,
+        );
+        Paragraph::new(Text::from(volume_names))
             .block(
                 Block::default()
                     .title("Volumes")
@@ -452,12 +412,14 @@ fn get_backups(backups: &[BackupApplication], project: &str) -> Vec<BackupApplic
     backups.reverse();
     backups
 }
-fn get_volumes(backups: &[BackupApplication], project: &str) -> Vec<String> {
-    backups
-        .iter()
-        .filter(|backup| backup.name == project)
-        .flat_map(|backup| backup.volumes.iter().map(|v| v.name.clone()))
-        .collect()
+fn get_volumes(backup: BackupApplication) -> Vec<String> {
+    let mut volumes = HashSet::new();
+    for volume in backup.volumes {
+        volumes.insert(volume.name);
+    }
+    let mut volumes: Vec<String> = volumes.into_iter().collect();
+    volumes.sort();
+    volumes
 }
 fn style_selected(list: &Vec<String>, selected_index: usize, home_column: bool) -> Vec<Line> {
     list.iter()
@@ -471,6 +433,28 @@ fn style_selected(list: &Vec<String>, selected_index: usize, home_column: bool) 
                 Style::default()
             };
             Line::from(item.clone()).style(style)
+        })
+        .collect()
+}
+fn style_checkboxes(
+    list: &Vec<String>,
+    selected_index: usize,
+    selected_volumes: &HashSet<String>,
+) -> Vec<Line> {
+    list.iter()
+        .enumerate()
+        .map(|(i, item)| {
+            let style = if i == selected_index {
+                Style::default().add_modifier(ratatui::style::Modifier::REVERSED)
+            } else {
+                Style::default()
+            };
+            let checkbox = if selected_volumes.contains(item) {
+                "[x] "
+            } else {
+                "[ ] "
+            };
+            Line::from(format!("{}{}", checkbox, item)).style(style)
         })
         .collect()
 }
