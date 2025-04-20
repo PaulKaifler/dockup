@@ -121,7 +121,11 @@ impl RestoreApp {
         let layout = Layout::default()
             .direction(Direction::Vertical)
             .margin(1)
-            .constraints(vec![Constraint::Min(5), Constraint::Length(5)])
+            .constraints(vec![
+                Constraint::Min(5),
+                Constraint::Length(5),
+                Constraint::Length(1),
+            ])
             .split(frame.area());
 
         let chunk = Layout::default()
@@ -137,6 +141,7 @@ impl RestoreApp {
         self.draw_dates(chunk[1], frame.buffer_mut());
         self.draw_volumes(chunk[2], frame.buffer_mut());
         self.draw_summary(layout[1], frame.buffer_mut());
+        self.draw_tooltip(layout[2], frame.buffer_mut());
     }
     fn handle_events(&mut self) -> io::Result<()> {
         match event::read()? {
@@ -328,6 +333,13 @@ impl RestoreApp {
                     .borders(ratatui::widgets::Borders::ALL),
             )
             .render(area, buf);
+    }
+
+    fn draw_tooltip(&self, layout: Rect, buf: &mut Buffer) {
+        let tooltip_text = " (q)uit | (h)elp | (space) select | (up) | (down) | (left) | (right) ";
+        let paragraph =
+            Paragraph::new(tooltip_text.blue().bold()).wrap(ratatui::widgets::Wrap { trim: false });
+        paragraph.render(layout, buf);
     }
 }
 
