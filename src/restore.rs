@@ -1,9 +1,10 @@
+use std::collections::HashSet;
 use std::io;
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
     buffer::Buffer,
-    layout::Rect,
+    layout::{Constraint, Direction, Layout, Rect},
     style::Stylize,
     symbols::border,
     text::{Line, Text},
@@ -11,7 +12,29 @@ use ratatui::{
     DefaultTerminal, Frame,
 };
 
-use crate::{config::Config, scanner::BackupApplication, utils::run_remote_cmd_with_output};
+use crate::{
+    config::Config,
+    scanner::{BackupApplication, Volume},
+    utils::run_remote_cmd_with_output,
+};
+
+struct RestoreConfig {
+    project: Option<String>,
+    version: Option<String>,
+    repo: bool,
+    volumes: Vec<Volume>,
+}
+
+impl RestoreConfig {
+    fn emppty() -> Self {
+        Self {
+            project: None,
+            version: None,
+            repo: false,
+            volumes: Vec::new(),
+        }
+    }
+}
 
 pub fn handle_restore_command(
     config: &Config,
@@ -45,7 +68,10 @@ fn enter_interactive_shell(config: &Config) -> io::Result<()> {
 
 pub struct RestoreApp {
     backups: Vec<BackupApplication>,
+    config: RestoreConfig,
     exit: bool,
+    selected_index: usize,
+    selected_volumes: HashSet<String>,
 }
 
 impl RestoreApp {
@@ -56,13 +82,17 @@ impl RestoreApp {
         });
         Self {
             backups,
+            config: RestoreConfig::emppty(),
             exit: false,
+            selected_index: 0,
+            selected_volumes: HashSet::new(),
         }
     }
 }
 
 impl RestoreApp {
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> io::Result<()> {
+        log::debug!("{:?}", self.backups);
         while !self.exit {
             terminal.draw(|frame| self.draw(frame))?;
             self.handle_events()?;
@@ -71,13 +101,90 @@ impl RestoreApp {
     }
 
     fn draw(&self, frame: &mut Frame) {
-        frame.render_widget(self, frame.area());
+        let layout = Layout::default()
+            .direction(Direction::Vertical)
+            .margin(1)
+            .constraints(vec![Constraint::Percentage(80), Constraint::Percentage(20)])
+            .split(frame.area());
+
+        let chunk = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(vec![
+                Constraint::Percentage(33),
+                Constraint::Percentage(33),
+                Constraint::Percentage(34),
+            ])
+            .split(layout[0]);
+
+        // Render projects
+        let project_names: Vec<Line> = self
+            .backups
+            .iter()
+            .map(|app| Line::from(app.name.clone()))
+            .collect();
+        Paragraph::new(Text::from(project_names))
+            .block(
+                Block::default()
+                    .title("Projects")
+                    .borders(ratatui::widgets::Borders::ALL),
+            )
+            .render(chunk[0], frame.buffer_mut());
+
+        // Render dates
+        let dates: Vec<Line> = self
+            .backups
+            .iter()
+            .map(|app| Line::from(app.timestamp.to_string()))
+            .collect();
+        Paragraph::new(Text::from(dates))
+            .block(
+                Block::default()
+                    .title("Dates")
+                    .borders(ratatui::widgets::Borders::ALL),
+            )
+            .render(chunk[1], frame.buffer_mut());
+
+        // Render volume checkboxes
+        let volume_texts: Vec<Line> = self
+            .config
+            .volumes
+            .iter()
+            .map(|volume| {
+                let checkbox: String = if self.selected_volumes.contains(&volume.name) {
+                    "[x] ".to_string()
+                } else {
+                    "[ ] ".to_string()
+                };
+                Line::from(format!("{}{}", checkbox, volume.name))
+            })
+            .collect();
+        Paragraph::new(Text::from(volume_texts))
+            .block(
+                Block::default()
+                    .title("Volumes")
+                    .borders(ratatui::widgets::Borders::ALL),
+            )
+            .render(chunk[2], frame.buffer_mut());
+
+        // Render summary
+        let summary_text = format!(
+            "Selected Project: {}\nSelected Volumes: {:?}",
+            self.backups
+                .get(self.selected_index)
+                .map_or("None".to_string(), |app| app.name.clone()),
+            self.selected_volumes
+        );
+        Paragraph::new(Line::from(summary_text))
+            .block(
+                Block::default()
+                    .title("Summary")
+                    .borders(ratatui::widgets::Borders::ALL),
+            )
+            .render(layout[1], frame.buffer_mut());
     }
 
     fn handle_events(&mut self) -> io::Result<()> {
         match event::read()? {
-            // it's important to check that the event is a key press event as
-            // crossterm also emits key release and repeat events on Windows.
             Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
                 self.handle_key_event(key_event)
             }
@@ -88,6 +195,24 @@ impl RestoreApp {
 
     fn handle_key_event(&mut self, key_event: KeyEvent) {
         match key_event.code {
+            KeyCode::Up => {
+                if self.selected_index > 0 {
+                    self.selected_index -= 1;
+                }
+            }
+            KeyCode::Down => {
+                if self.selected_index < self.backups.len() - 1 {
+                    self.selected_index += 1;
+                }
+            }
+            KeyCode::Char(' ') => {
+                let selected_backup = &self.backups[self.selected_index];
+                if self.selected_volumes.contains(&selected_backup.name) {
+                    self.selected_volumes.remove(&selected_backup.name);
+                } else {
+                    self.selected_volumes.insert(selected_backup.name.clone());
+                }
+            }
             KeyCode::Char('q') => self.exit(),
             _ => {}
         }
@@ -122,30 +247,59 @@ impl Widget for &RestoreApp {
 }
 
 async fn scan_backup_target(config: &Config) -> anyhow::Result<Vec<BackupApplication>> {
+    log::debug!("Scanning backup target: {}", config.remote_backup_path);
     let mut backups = Vec::new();
     let listing =
         run_remote_cmd_with_output(config, &format!("ls -1 {}", config.remote_backup_path))
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-    for dir in listing.lines() {
-        let meta = run_remote_cmd_with_output(
-            config,
-            &format!(
-                "cat {}/{}/mdb_dev_meta.json || cat {}/{}/meta.json",
-                config.remote_backup_path, dir, config.remote_backup_path, dir,
-            ),
-        );
 
-        if let Ok(json) = meta {
-            if let Ok(mut app) = serde_json::from_str::<BackupApplication>(&json) {
-                // (Optional) fallback timestamp
-                if app.timestamp.timestamp() == 0 {
-                    if let Ok(parsed) = chrono::DateTime::parse_from_str(dir, "%Y_%m_%d_%H%M%S") {
-                        app.timestamp = parsed.with_timezone(&chrono::Local);
+    let application_folders = listing
+        .lines()
+        .filter(|line| !line.contains("."))
+        .collect::<Vec<_>>();
+
+    for app in application_folders {
+        log::debug!("Found backup application: {}", app);
+        let folders = run_remote_cmd_with_output(
+            config,
+            &format!("ls -1 {}/{}", config.remote_backup_path, app),
+        )
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        let just_folders = folders
+            .lines()
+            .filter(|line| !line.contains("."))
+            .collect::<Vec<_>>();
+        log::debug!("Found backup folders: {:?}", just_folders);
+        for dir in just_folders {
+            log::debug!("Found backup directory: {}", dir);
+            log::debug!(
+                "meta.json path: {}/{}/meta.json",
+                config.remote_backup_path,
+                dir
+            );
+            let meta = run_remote_cmd_with_output(
+                config,
+                &format!(
+                    "cat {}/{}/{}/meta.json",
+                    config.remote_backup_path, app, dir
+                ),
+            );
+
+            if let Ok(json) = meta {
+                if let Ok(mut app) = serde_json::from_str::<BackupApplication>(&json) {
+                    // (Optional) fallback timestamp
+                    if app.timestamp.timestamp() == 0 {
+                        if let Ok(parsed) = chrono::DateTime::parse_from_str(dir, "%Y_%m_%d_%H%M%S")
+                        {
+                            app.timestamp = parsed.with_timezone(&chrono::Local);
+                        }
                     }
+                    backups.push(app);
                 }
-                backups.push(app);
             }
         }
     }
+    log::debug!("Summary of backups: {:?}", backups);
+    log::info!("Found {} backups", backups.len());
     Ok(backups)
 }
