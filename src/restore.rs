@@ -67,8 +67,16 @@ pub struct RestoreApp {
     selected_project_index: usize,
     selected_backup_index: usize,
     selected_volume_index: usize,
-    selected_column: usize,
+    selected_column: Column,
     selected_volumes: HashSet<String>,
+    toggled_repo: bool,
+}
+
+#[derive(PartialEq)]
+enum Column {
+    Projects,
+    Dates,
+    Volumes,
 }
 
 impl RestoreApp {
@@ -92,8 +100,9 @@ impl RestoreApp {
             selected_project_index: 0,
             selected_backup_index: 0,
             selected_volume_index: 0,
-            selected_column: 0,
+            selected_column: Column::Projects,
             selected_volumes: HashSet::new(),
+            toggled_repo: false,
         }
     }
 }
@@ -140,88 +149,50 @@ impl RestoreApp {
     }
 
     fn handle_key_event(&mut self, key_event: KeyEvent) {
-        match key_event.code {
-            KeyCode::Up => {
-                if self.selected_column == 0 && self.selected_project_index > 0 {
-                    self.selected_project_index -= 1;
-                } else if self.selected_column == 1 {
-                    let selected_project = &self.projects[self.selected_project_index];
-                    let matching_backups: Vec<_> = self
-                        .backups
-                        .iter()
-                        .filter(|b| &b.name == selected_project)
-                        .collect();
-                    if self.selected_backup_index > 0 && !matching_backups.is_empty() {
+        if key_event.code == KeyCode::Esc || key_event.code == KeyCode::Char('q') {
+            self.exit();
+            return;
+        }
+        match self.selected_column {
+            Column::Projects => match key_event.code {
+                KeyCode::Up => {
+                    if self.selected_project_index > 0 {
+                        self.selected_project_index -= 1;
+                    }
+                    self.selected_backup_index = 0;
+                }
+                KeyCode::Down => {
+                    if self.selected_project_index < self.projects.len() - 1 {
+                        self.selected_project_index += 1;
+                    }
+                    self.selected_backup_index = 0;
+                }
+                KeyCode::Right => {
+                    self.selected_column = Column::Dates;
+                }
+                _ => {}
+            },
+            Column::Dates => match key_event.code {
+                KeyCode::Up => {
+                    if self.selected_backup_index > 0 {
                         self.selected_backup_index -= 1;
                     }
-                } else if self.selected_column == 2 {
-                    let selected_backups: Vec<_> = self
-                        .backups
-                        .iter()
-                        .filter(|b| &b.name == &self.projects[self.selected_project_index])
-                        .collect();
-                    if self.selected_volume_index > 0 && !selected_backups.is_empty() {
-                        self.selected_volume_index -= 1;
-                    }
                 }
-            }
-            KeyCode::Down => {
-                if self.selected_column == 0
-                    && self.selected_project_index < self.projects.len() - 1
-                {
-                    self.selected_project_index += 1;
-                } else if self.selected_column == 1 {
-                    let selected_project = &self.projects[self.selected_project_index];
-                    let matching_backups: Vec<_> = self
-                        .backups
-                        .iter()
-                        .filter(|b| &b.name == selected_project)
-                        .collect();
-                    if self.selected_backup_index < matching_backups.len() - 1 {
+                KeyCode::Down => {
+                    if self.selected_backup_index < self.backups.len() - 1 {
                         self.selected_backup_index += 1;
                     }
-                } else if self.selected_column == 2 {
-                    let selected_backups: Vec<_> = self
-                        .backups
-                        .iter()
-                        .filter(|b| &b.name == &self.projects[self.selected_project_index])
-                        .collect();
-                    if self.selected_volume_index < selected_backups.len() - 1 {
-                        self.selected_volume_index += 1;
-                    }
                 }
-            }
-            KeyCode::Left => {
-                if self.selected_column > 0 {
-                    self.selected_column -= 1;
+                KeyCode::Left => {
+                    self.selected_column = Column::Projects;
                 }
-            }
-            KeyCode::Right => {
-                if self.selected_column < 2 {
-                    self.selected_column += 1;
+                KeyCode::Right => {
+                    self.selected_column = Column::Volumes;
+                    self.selected_volume_index = 0;
                 }
-            }
-            KeyCode::Char(' ') => {
-                if self.selected_column == 2 {
-                    let selected_project = &self.projects[self.selected_project_index];
-                    let selected_backups: Vec<_> = self
-                        .backups
-                        .iter()
-                        .filter(|b| &b.name == selected_project)
-                        .collect();
-                    if let Some(backup) = selected_backups.get(self.selected_backup_index) {
-                        if let Some(volume) = backup.volumes.get(self.selected_volume_index) {
-                            if self.selected_volumes.contains(&volume.name) {
-                                self.selected_volumes.remove(&volume.name);
-                            } else {
-                                self.selected_volumes.insert(volume.name.clone());
-                            }
-                        }
-                    }
-                }
-            }
-            KeyCode::Char('q') => self.exit(),
-            _ => {}
+                _ => {}
+            },
+            Column::Volumes => todo!(),
         }
     }
 
@@ -235,7 +206,9 @@ impl RestoreApp {
             .iter()
             .enumerate()
             .map(|(i, app)| {
-                let style = if self.selected_column == 0 && i == self.selected_project_index {
+                let style = if self.selected_column == Column::Projects
+                    && i == self.selected_project_index
+                {
                     Style::default().add_modifier(ratatui::style::Modifier::REVERSED)
                 } else {
                     Style::default()
@@ -261,11 +234,12 @@ impl RestoreApp {
             .filter(|b| &b.name == selected_project)
             .enumerate()
             .map(|(i, app)| {
-                let style = if self.selected_column == 1 && i == self.selected_backup_index {
-                    Style::default().add_modifier(ratatui::style::Modifier::REVERSED)
-                } else {
-                    Style::default()
-                };
+                let style =
+                    if self.selected_column == Column::Dates && i == self.selected_backup_index {
+                        Style::default().add_modifier(ratatui::style::Modifier::REVERSED)
+                    } else {
+                        Style::default()
+                    };
                 Line::from(app.timestamp.format("%d. %B %Y %H:%M:%S").to_string()).style(style)
             })
             .collect();
@@ -287,35 +261,38 @@ impl RestoreApp {
             .filter(|b| &b.name == selected_project)
             .collect();
 
-        let mut volume_lines: Vec<Line> = if let Some(selected_backup) =
-            selected_backups.get(self.selected_backup_index)
-        {
-            selected_backup
-                .volumes
-                .iter()
-                .enumerate()
-                .map(|(i, volume)| {
-                    let style = if self.selected_column == 2 && i == self.selected_volume_index {
-                        Style::default().add_modifier(ratatui::style::Modifier::REVERSED)
-                    } else {
-                        Style::default()
-                    };
-                    let checkbox = if self.selected_volumes.contains(&volume.name) {
-                        "[x] "
-                    } else {
-                        "[ ] "
-                    };
-                    Line::from(format!("{}{}", checkbox, volume.name)).style(style)
-                })
-                .collect()
-        } else {
-            Vec::new()
-        };
+        let mut volume_lines: Vec<Line> =
+            if let Some(selected_backup) = selected_backups.get(self.selected_backup_index) {
+                selected_backup
+                    .volumes
+                    .iter()
+                    .enumerate()
+                    .map(|(i, volume)| {
+                        let style = if self.selected_column == Column::Volumes
+                            && i == self.selected_volume_index
+                        {
+                            Style::default().add_modifier(ratatui::style::Modifier::REVERSED)
+                        } else {
+                            Style::default()
+                        };
+                        let checkbox = if self.selected_volumes.contains(&volume.name) {
+                            "[x] "
+                        } else {
+                            "[ ] "
+                        };
+                        Line::from(format!("{}{}", checkbox, volume.name)).style(style)
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            };
 
         let repo_index = selected_backups
             .get(self.selected_backup_index)
             .map_or(0, |b| b.volumes.len());
-        let repo_style = if self.selected_column == 2 && self.selected_volume_index == repo_index {
+        let repo_style = if self.selected_column == Column::Volumes
+            && self.selected_volume_index == repo_index
+        {
             Style::default().add_modifier(ratatui::style::Modifier::REVERSED)
         } else {
             Style::default()
