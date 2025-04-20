@@ -5,7 +5,7 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Direction, Layout, Rect},
-    style::Stylize,
+    style::{Style, Stylize},
     symbols::border,
     text::{Line, Text},
     widgets::{Block, Paragraph, Widget},
@@ -72,6 +72,7 @@ pub struct RestoreApp {
     exit: bool,
     selected_index: usize,
     selected_volumes: HashSet<String>,
+    selected_column: usize,
 }
 
 impl RestoreApp {
@@ -86,6 +87,7 @@ impl RestoreApp {
             exit: false,
             selected_index: 0,
             selected_volumes: HashSet::new(),
+            selected_column: 0,
         }
     }
 }
@@ -120,7 +122,15 @@ impl RestoreApp {
         let project_names: Vec<Line> = self
             .backups
             .iter()
-            .map(|app| Line::from(app.name.clone()))
+            .enumerate()
+            .map(|(i, app)| {
+                let style = if self.selected_column == 0 && i == self.selected_index {
+                    Style::default().add_modifier(ratatui::style::Modifier::REVERSED)
+                } else {
+                    Style::default()
+                };
+                Line::from(app.name.clone()).style(style)
+            })
             .collect();
         Paragraph::new(Text::from(project_names))
             .block(
@@ -134,7 +144,15 @@ impl RestoreApp {
         let dates: Vec<Line> = self
             .backups
             .iter()
-            .map(|app| Line::from(app.timestamp.to_string()))
+            .enumerate()
+            .map(|(i, app)| {
+                let style = if self.selected_column == 1 && i == self.selected_index {
+                    Style::default().add_modifier(ratatui::style::Modifier::REVERSED)
+                } else {
+                    Style::default()
+                };
+                Line::from(app.timestamp.to_string()).style(style)
+            })
             .collect();
         Paragraph::new(Text::from(dates))
             .block(
@@ -149,13 +167,19 @@ impl RestoreApp {
             .config
             .volumes
             .iter()
-            .map(|volume| {
+            .enumerate()
+            .map(|(i, volume)| {
+                let style = if self.selected_column == 2 && i == self.selected_index {
+                    Style::default().add_modifier(ratatui::style::Modifier::REVERSED)
+                } else {
+                    Style::default()
+                };
                 let checkbox: String = if self.selected_volumes.contains(&volume.name) {
                     "[x] ".to_string()
                 } else {
                     "[ ] ".to_string()
                 };
-                Line::from(format!("{}{}", checkbox, volume.name))
+                Line::from(format!("{}{}", checkbox, volume.name)).style(style)
             })
             .collect();
         Paragraph::new(Text::from(volume_texts))
@@ -196,21 +220,46 @@ impl RestoreApp {
     fn handle_key_event(&mut self, key_event: KeyEvent) {
         match key_event.code {
             KeyCode::Up => {
-                if self.selected_index > 0 {
+                if self.selected_column == 0 && self.selected_index > 0 {
+                    self.selected_index -= 1;
+                } else if self.selected_column == 1 && self.selected_index > 0 {
+                    self.selected_index -= 1;
+                } else if self.selected_column == 2 && self.selected_index > 0 {
                     self.selected_index -= 1;
                 }
             }
             KeyCode::Down => {
-                if self.selected_index < self.backups.len() - 1 {
+                if self.selected_column == 0 && self.selected_index < self.backups.len() - 1 {
+                    self.selected_index += 1;
+                } else if self.selected_column == 1 && self.selected_index < self.backups.len() - 1
+                {
+                    self.selected_index += 1;
+                } else if self.selected_column == 2
+                    && self.selected_index < self.config.volumes.len() - 1
+                {
                     self.selected_index += 1;
                 }
             }
+            KeyCode::Left => {
+                if self.selected_column > 0 {
+                    self.selected_column -= 1;
+                    self.selected_index = 0;
+                }
+            }
+            KeyCode::Right => {
+                if self.selected_column < 2 {
+                    self.selected_column += 1;
+                    self.selected_index = 0;
+                }
+            }
             KeyCode::Char(' ') => {
-                let selected_backup = &self.backups[self.selected_index];
-                if self.selected_volumes.contains(&selected_backup.name) {
-                    self.selected_volumes.remove(&selected_backup.name);
-                } else {
-                    self.selected_volumes.insert(selected_backup.name.clone());
+                if self.selected_column == 2 {
+                    let selected_backup = &self.backups[self.selected_index];
+                    if self.selected_volumes.contains(&selected_backup.name) {
+                        self.selected_volumes.remove(&selected_backup.name);
+                    } else {
+                        self.selected_volumes.insert(selected_backup.name.clone());
+                    }
                 }
             }
             KeyCode::Char('q') => self.exit(),
