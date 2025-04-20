@@ -136,15 +136,15 @@ impl RestoreApp {
         let layout = Layout::default()
             .direction(Direction::Vertical)
             .margin(1)
-            .constraints(vec![Constraint::Percentage(80), Constraint::Percentage(20)])
+            .constraints(vec![Constraint::Min(5), Constraint::Length(5)])
             .split(frame.area());
 
         let chunk = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(vec![
-                Constraint::Percentage(33),
-                Constraint::Percentage(33),
-                Constraint::Percentage(34),
+                Constraint::Ratio(1, 3),
+                Constraint::Ratio(1, 3),
+                Constraint::Ratio(1, 3),
             ])
             .split(layout[0]);
 
@@ -152,8 +152,6 @@ impl RestoreApp {
         self.draw_backups(chunk[1], frame.buffer_mut());
         self.draw_volumes(chunk[2], frame.buffer_mut());
         self.draw_summary(layout[1], frame.buffer_mut());
-
-        // (Optional: keep summary section rendering as-is)
     }
     fn handle_events(&mut self) -> io::Result<()> {
         match event::read()? {
