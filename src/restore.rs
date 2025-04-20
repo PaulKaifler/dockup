@@ -167,7 +167,7 @@ impl RestoreApp {
                 } else {
                     Style::default()
                 };
-                Line::from(app.timestamp.to_string()).style(style)
+                Line::from(app.timestamp.format("%d. %B %Y %H:%M:%S").to_string()).style(style)
             })
             .collect();
         Paragraph::new(Text::from(dates))
@@ -184,7 +184,7 @@ impl RestoreApp {
             .iter()
             .filter(|b| &b.name == selected_project)
             .collect();
-        let volume_texts: Vec<Line> = if let Some(selected_backup) =
+        let mut volume_lines: Vec<Line> = if let Some(selected_backup) =
             selected_backups.get(self.selected_backup_index)
         {
             selected_backup
@@ -208,8 +208,26 @@ impl RestoreApp {
         } else {
             Vec::new()
         };
+        // Add REPO as selectable
+        let repo_index =
+            if let Some(selected_backup) = selected_backups.get(self.selected_backup_index) {
+                selected_backup.volumes.len()
+            } else {
+                0
+            };
+        let repo_style = if self.selected_column == 2 && self.selected_volume_index == repo_index {
+            Style::default().add_modifier(ratatui::style::Modifier::REVERSED)
+        } else {
+            Style::default()
+        };
+        let repo_checkbox = if self.selected_volumes.contains("repo") {
+            "[x] "
+        } else {
+            "[ ] "
+        };
+        volume_lines.push(Line::from(format!("{}REPO", repo_checkbox)).style(repo_style));
 
-        Paragraph::new(Text::from(volume_texts))
+        Paragraph::new(Text::from(volume_lines))
             .block(
                 Block::default()
                     .title("Volumes")
@@ -218,14 +236,47 @@ impl RestoreApp {
             .render(chunk[2], frame.buffer_mut());
 
         // Render summary
-        let summary_text = format!(
-            "Selected Project: {}\n Selected Volumes: {:?}",
-            self.backups
-                .get(self.selected_backup_index)
-                .map_or("None".to_string(), |app| app.name.clone()),
-            self.selected_volumes
+        let selected_project = self
+            .projects
+            .get(self.selected_project_index)
+            .cloned()
+            .unwrap_or_default();
+        let selected_backup = self
+            .backups
+            .iter()
+            .filter(|b| b.name == selected_project)
+            .nth(self.selected_backup_index);
+
+        let mut summary_lines = vec![format!("Project: {}", selected_project)];
+
+        if let Some(backup) = selected_backup {
+            summary_lines.push(format!(
+                "Date: {}",
+                backup.timestamp.format("%d. %B %Y %H:%M:%S")
+            ));
+            summary_lines.push(format!(
+                "Repo: {}",
+                if self.selected_volumes.contains("repo") {
+                    "yes"
+                } else {
+                    "no"
+                }
+            ));
+            summary_lines.push("Volumes:".to_string());
+            for volume in &backup.volumes {
+                if self.selected_volumes.contains(&volume.name) {
+                    summary_lines.push(format!("  - {}", volume.name));
+                }
+            }
+        }
+
+        let summary_text = Text::from(
+            summary_lines
+                .into_iter()
+                .map(Line::from)
+                .collect::<Vec<_>>(),
         );
-        Paragraph::new(Line::from(summary_text))
+        Paragraph::new(summary_text)
             .block(
                 Block::default()
                     .title("Summary")
@@ -308,11 +359,20 @@ impl RestoreApp {
             }
             KeyCode::Char(' ') => {
                 if self.selected_column == 2 {
-                    let selected_backup = &self.backups[self.selected_backup_index];
-                    if self.selected_volumes.contains(&selected_backup.name) {
-                        self.selected_volumes.remove(&selected_backup.name);
-                    } else {
-                        self.selected_volumes.insert(selected_backup.name.clone());
+                    let selected_project = &self.projects[self.selected_project_index];
+                    let selected_backups: Vec<_> = self
+                        .backups
+                        .iter()
+                        .filter(|b| &b.name == selected_project)
+                        .collect();
+                    if let Some(backup) = selected_backups.get(self.selected_backup_index) {
+                        if let Some(volume) = backup.volumes.get(self.selected_volume_index) {
+                            if self.selected_volumes.contains(&volume.name) {
+                                self.selected_volumes.remove(&volume.name);
+                            } else {
+                                self.selected_volumes.insert(volume.name.clone());
+                            }
+                        }
                     }
                 }
             }
