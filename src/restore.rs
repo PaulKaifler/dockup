@@ -222,16 +222,19 @@ impl RestoreApp {
                     self.selected_column = Column::Projects;
                 }
                 KeyCode::Char(' ') => {
-                    let selected_volume =
-                        &self.backups[self.selected_date_index].volumes[self.selected_volume_index];
-                    if selected_volume.name == "REPO" {
+                    let selected_volume = get_volumes(
+                        get_backups(&self.backups, &self.projects[self.selected_project_index])
+                            [self.selected_date_index]
+                            .clone(),
+                    )[self.selected_volume_index]
+                        .clone();
+                    if selected_volume == "REPO" {
                         self.toggled_repo = !self.toggled_repo;
+                    }
+                    if self.selected_volumes.contains(&selected_volume) {
+                        self.selected_volumes.remove(&selected_volume);
                     } else {
-                        if self.selected_volumes.contains(&selected_volume.name) {
-                            self.selected_volumes.remove(&selected_volume.name);
-                        } else {
-                            self.selected_volumes.insert(selected_volume.name.clone());
-                        }
+                        self.selected_volumes.insert(selected_volume);
                     }
                 }
                 _ => {}
@@ -307,11 +310,16 @@ impl RestoreApp {
         let summary_text = format!(
             "Selected Project: {}\nSelected Backup: {}\nSelected Volume: {}",
             self.projects[self.selected_project_index],
-            self.backups[self.selected_date_index].timestamp,
-            self.backups[self.selected_date_index]
+            get_backups(&self.backups, &self.projects[self.selected_project_index])
+                [self.selected_date_index]
+                .timestamp
+                .format("%d. %B %Y %H:%M:%S"),
+            get_backups(&self.backups, &self.projects[self.selected_project_index])
+                [self.selected_date_index]
                 .volumes
                 .get(self.selected_volume_index)
                 .map_or("None".to_string(), |v| v.name.clone())
+                .clone()
         );
 
         Paragraph::new(Text::from(summary_text))
@@ -427,6 +435,7 @@ fn get_volumes(backup: BackupApplication) -> Vec<String> {
     }
     let mut volumes: Vec<String> = volumes.into_iter().collect();
     volumes.sort();
+    volumes.push("REPO".to_string());
     volumes
 }
 fn style_selected(list: &Vec<String>, selected_index: usize, home_column: bool) -> Vec<Line> {
