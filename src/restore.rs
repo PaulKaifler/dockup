@@ -148,159 +148,13 @@ impl RestoreApp {
             ])
             .split(layout[0]);
 
-        // Render projects
-        let project_names: Vec<Line> = self
-            .projects
-            .iter()
-            .enumerate()
-            .map(|(i, app)| {
-                let style = if self.selected_column == 0 && i == self.selected_project_index {
-                    Style::default().add_modifier(ratatui::style::Modifier::REVERSED)
-                } else {
-                    Style::default()
-                };
-                Line::from(app.clone()).style(style)
-            })
-            .collect();
-        Paragraph::new(Text::from(project_names))
-            .block(
-                Block::default()
-                    .title("Projects")
-                    .borders(ratatui::widgets::Borders::ALL),
-            )
-            .render(chunk[0], frame.buffer_mut());
+        self.draw_projects(chunk[0], frame.buffer_mut());
+        self.draw_backups(chunk[1], frame.buffer_mut());
+        self.draw_volumes(chunk[2], frame.buffer_mut());
+        self.draw_summary(layout[1], frame.buffer_mut());
 
-        // Render dates
-        let selected_project = &self.projects[self.selected_project_index];
-        let dates: Vec<Line> = self
-            .backups
-            .iter()
-            .filter(|b| &b.name == selected_project)
-            .enumerate()
-            .map(|(i, app)| {
-                let style = if self.selected_column == 1 && i == self.selected_backup_index {
-                    Style::default().add_modifier(ratatui::style::Modifier::REVERSED)
-                } else {
-                    Style::default()
-                };
-                Line::from(app.timestamp.format("%d. %B %Y %H:%M:%S").to_string()).style(style)
-            })
-            .collect();
-        Paragraph::new(Text::from(dates))
-            .block(
-                Block::default()
-                    .title("Dates")
-                    .borders(ratatui::widgets::Borders::ALL),
-            )
-            .render(chunk[1], frame.buffer_mut());
-
-        // Render volume checkboxes
-        let selected_backups: Vec<_> = self
-            .backups
-            .iter()
-            .filter(|b| &b.name == selected_project)
-            .collect();
-        let mut volume_lines: Vec<Line> = if let Some(selected_backup) =
-            selected_backups.get(self.selected_backup_index)
-        {
-            selected_backup
-                .volumes
-                .iter()
-                .enumerate()
-                .map(|(i, volume)| {
-                    let style = if self.selected_column == 2 && i == self.selected_volume_index {
-                        Style::default().add_modifier(ratatui::style::Modifier::REVERSED)
-                    } else {
-                        Style::default()
-                    };
-                    let checkbox: String = if self.selected_volumes.contains(&volume.name) {
-                        "[x] ".to_string()
-                    } else {
-                        "[ ] ".to_string()
-                    };
-                    Line::from(format!("{}{}", checkbox, volume.name)).style(style)
-                })
-                .collect()
-        } else {
-            Vec::new()
-        };
-        // Add REPO as selectable
-        let repo_index =
-            if let Some(selected_backup) = selected_backups.get(self.selected_backup_index) {
-                selected_backup.volumes.len()
-            } else {
-                0
-            };
-        let repo_style = if self.selected_column == 2 && self.selected_volume_index == repo_index {
-            Style::default().add_modifier(ratatui::style::Modifier::REVERSED)
-        } else {
-            Style::default()
-        };
-        let repo_checkbox = if self.selected_volumes.contains("repo") {
-            "[x] "
-        } else {
-            "[ ] "
-        };
-        volume_lines.push(Line::from(format!("{}REPO", repo_checkbox)).style(repo_style));
-
-        Paragraph::new(Text::from(volume_lines))
-            .block(
-                Block::default()
-                    .title("Volumes")
-                    .borders(ratatui::widgets::Borders::ALL),
-            )
-            .render(chunk[2], frame.buffer_mut());
-
-        // Render summary
-        let selected_project = self
-            .projects
-            .get(self.selected_project_index)
-            .cloned()
-            .unwrap_or_default();
-        let selected_backup = self
-            .backups
-            .iter()
-            .filter(|b| b.name == selected_project)
-            .nth(self.selected_backup_index);
-
-        let mut summary_lines = vec![format!("Project: {}", selected_project)];
-
-        if let Some(backup) = selected_backup {
-            summary_lines.push(format!(
-                "Date: {}",
-                backup.timestamp.format("%d. %B %Y %H:%M:%S")
-            ));
-            summary_lines.push(format!(
-                "Repo: {}",
-                if self.selected_volumes.contains("repo") {
-                    "yes"
-                } else {
-                    "no"
-                }
-            ));
-            summary_lines.push("Volumes:".to_string());
-            for volume in &backup.volumes {
-                if self.selected_volumes.contains(&volume.name) {
-                    summary_lines.push(format!("  - {}", volume.name));
-                }
-            }
-        }
-
-        let summary_text = Text::from(
-            summary_lines
-                .into_iter()
-                .map(Line::from)
-                .collect::<Vec<_>>(),
-        );
-        Paragraph::new(summary_text)
-            .block(
-                Block::default()
-                    .title("Summary")
-                    .borders(ratatui::widgets::Borders::ALL),
-            )
-            .render(layout[1], frame.buffer_mut());
+        // (Optional: keep summary section rendering as-is)
     }
-
     fn handle_events(&mut self) -> io::Result<()> {
         match event::read()? {
             Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
@@ -399,6 +253,133 @@ impl RestoreApp {
 
     fn exit(&mut self) {
         self.exit = true;
+    }
+
+    fn draw_projects(&self, area: Rect, buf: &mut Buffer) {
+        let project_names: Vec<Line> = self
+            .projects
+            .iter()
+            .enumerate()
+            .map(|(i, app)| {
+                let style = if self.selected_column == 0 && i == self.selected_project_index {
+                    Style::default().add_modifier(ratatui::style::Modifier::REVERSED)
+                } else {
+                    Style::default()
+                };
+                Line::from(app.clone()).style(style)
+            })
+            .collect();
+
+        Paragraph::new(Text::from(project_names))
+            .block(
+                Block::default()
+                    .title("Projects")
+                    .borders(ratatui::widgets::Borders::ALL),
+            )
+            .render(area, buf);
+    }
+
+    fn draw_backups(&self, area: Rect, buf: &mut Buffer) {
+        let selected_project = &self.projects[self.selected_project_index];
+        let dates: Vec<Line> = self
+            .backups
+            .iter()
+            .filter(|b| &b.name == selected_project)
+            .enumerate()
+            .map(|(i, app)| {
+                let style = if self.selected_column == 1 && i == self.selected_backup_index {
+                    Style::default().add_modifier(ratatui::style::Modifier::REVERSED)
+                } else {
+                    Style::default()
+                };
+                Line::from(app.timestamp.format("%d. %B %Y %H:%M:%S").to_string()).style(style)
+            })
+            .collect();
+
+        Paragraph::new(Text::from(dates))
+            .block(
+                Block::default()
+                    .title("Dates")
+                    .borders(ratatui::widgets::Borders::ALL),
+            )
+            .render(area, buf);
+    }
+
+    fn draw_volumes(&self, area: Rect, buf: &mut Buffer) {
+        let selected_project = &self.projects[self.selected_project_index];
+        let selected_backups: Vec<_> = self
+            .backups
+            .iter()
+            .filter(|b| &b.name == selected_project)
+            .collect();
+
+        let mut volume_lines: Vec<Line> = if let Some(selected_backup) =
+            selected_backups.get(self.selected_backup_index)
+        {
+            selected_backup
+                .volumes
+                .iter()
+                .enumerate()
+                .map(|(i, volume)| {
+                    let style = if self.selected_column == 2 && i == self.selected_volume_index {
+                        Style::default().add_modifier(ratatui::style::Modifier::REVERSED)
+                    } else {
+                        Style::default()
+                    };
+                    let checkbox = if self.selected_volumes.contains(&volume.name) {
+                        "[x] "
+                    } else {
+                        "[ ] "
+                    };
+                    Line::from(format!("{}{}", checkbox, volume.name)).style(style)
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+
+        let repo_index = selected_backups
+            .get(self.selected_backup_index)
+            .map_or(0, |b| b.volumes.len());
+        let repo_style = if self.selected_column == 2 && self.selected_volume_index == repo_index {
+            Style::default().add_modifier(ratatui::style::Modifier::REVERSED)
+        } else {
+            Style::default()
+        };
+        let repo_checkbox = if self.selected_volumes.contains("repo") {
+            "[x] "
+        } else {
+            "[ ] "
+        };
+        volume_lines.push(Line::from(format!("{}REPO", repo_checkbox)).style(repo_style));
+
+        Paragraph::new(Text::from(volume_lines))
+            .block(
+                Block::default()
+                    .title("Volumes")
+                    .borders(ratatui::widgets::Borders::ALL),
+            )
+            .render(area, buf);
+    }
+
+    fn draw_summary(&self, area: Rect, buf: &mut Buffer) {
+        let summary_text = format!(
+            "Selected Project: {}\nSelected Backup: {}\nSelected Volume: {}",
+            self.projects[self.selected_project_index],
+            self.backups[self.selected_backup_index].timestamp,
+            self.backups[self.selected_backup_index]
+                .volumes
+                .get(self.selected_volume_index)
+                .map_or("None".to_string(), |v| v.name.clone())
+        );
+
+        Paragraph::new(Text::from(summary_text))
+            .block(
+                Block::default()
+                    .title("Summary")
+                    .borders(ratatui::widgets::Borders::ALL),
+            )
+            .render(area, buf);
     }
 }
 
