@@ -180,7 +180,10 @@ impl RestoreApp {
                     self.selected_volume_index = 0;
                 }
                 KeyCode::Down => {
-                    if self.selected_date_index < self.backups.len() - 1 {
+                    let available_dates =
+                        get_backups(&self.backups, &self.projects[self.selected_project_index])
+                            .len();
+                    if self.selected_date_index < available_dates - 1 {
                         self.selected_date_index += 1;
                     }
                     self.selected_volume_index = 0;
@@ -200,9 +203,13 @@ impl RestoreApp {
                     }
                 }
                 KeyCode::Down => {
-                    if self.selected_volume_index
-                        < self.backups[self.selected_date_index].volumes.len() - 1
-                    {
+                    let available_volumes = get_volumes(
+                        get_backups(&self.backups, &self.projects[self.selected_project_index])
+                            [self.selected_date_index]
+                            .clone(),
+                    )
+                    .len();
+                    if self.selected_volume_index < available_volumes - 1 {
                         self.selected_volume_index += 1;
                     }
                 }
@@ -281,9 +288,10 @@ impl RestoreApp {
                 [self.selected_date_index]
                 .clone(),
         );
-        let volume_names: Vec<Line> = style_selected(
+        let volume_names: Vec<Line> = style_checkboxes(
             &volumes,
             self.selected_volume_index,
+            &self.selected_volumes,
             self.selected_column == Column::Volumes,
         );
         Paragraph::new(Text::from(volume_names))
@@ -436,15 +444,16 @@ fn style_selected(list: &Vec<String>, selected_index: usize, home_column: bool) 
         })
         .collect()
 }
-fn style_checkboxes(
-    list: &Vec<String>,
+fn style_checkboxes<'a>(
+    list: &'a Vec<String>,
     selected_index: usize,
-    selected_volumes: &HashSet<String>,
-) -> Vec<Line> {
+    selected_volumes: &'a HashSet<String>,
+    home_column: bool,
+) -> Vec<Line<'a>> {
     list.iter()
         .enumerate()
         .map(|(i, item)| {
-            let style = if i == selected_index {
+            let style = if i == selected_index && home_column {
                 Style::default().add_modifier(ratatui::style::Modifier::REVERSED)
             } else {
                 Style::default()
