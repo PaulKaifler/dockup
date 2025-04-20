@@ -65,7 +65,7 @@ pub struct RestoreApp {
     projects: Vec<String>,
     exit: bool,
     selected_project_index: usize,
-    selected_backup_index: usize,
+    selected_date_index: usize,
     selected_volume_index: usize,
     selected_column: Column,
     selected_volumes: HashSet<String>,
@@ -98,7 +98,7 @@ impl RestoreApp {
             projects,
             exit: false,
             selected_project_index: 0,
-            selected_backup_index: 0,
+            selected_date_index: 0,
             selected_volume_index: 0,
             selected_column: Column::Projects,
             selected_volumes: HashSet::new(),
@@ -159,13 +159,13 @@ impl RestoreApp {
                     if self.selected_project_index > 0 {
                         self.selected_project_index -= 1;
                     }
-                    self.selected_backup_index = 0;
+                    self.selected_date_index = 0;
                 }
                 KeyCode::Down => {
                     if self.selected_project_index < self.projects.len() - 1 {
                         self.selected_project_index += 1;
                     }
-                    self.selected_backup_index = 0;
+                    self.selected_date_index = 0;
                 }
                 KeyCode::Right => {
                     self.selected_column = Column::Dates;
@@ -174,14 +174,14 @@ impl RestoreApp {
             },
             Column::Dates => match key_event.code {
                 KeyCode::Up => {
-                    if self.selected_backup_index > 0 {
-                        self.selected_backup_index -= 1;
+                    if self.selected_date_index > 0 {
+                        self.selected_date_index -= 1;
                     }
                     self.selected_volume_index = 0;
                 }
                 KeyCode::Down => {
-                    if self.selected_backup_index < self.backups.len() - 1 {
-                        self.selected_backup_index += 1;
+                    if self.selected_date_index < self.backups.len() - 1 {
+                        self.selected_date_index += 1;
                     }
                     self.selected_volume_index = 0;
                 }
@@ -201,7 +201,7 @@ impl RestoreApp {
                 }
                 KeyCode::Down => {
                     if self.selected_volume_index
-                        < self.backups[self.selected_backup_index].volumes.len() - 1
+                        < self.backups[self.selected_date_index].volumes.len() - 1
                     {
                         self.selected_volume_index += 1;
                     }
@@ -215,9 +215,9 @@ impl RestoreApp {
                     self.selected_column = Column::Projects;
                 }
                 KeyCode::Char(' ') => {
-                    let selected_volume = &self.backups[self.selected_backup_index].volumes
-                        [self.selected_volume_index];
-                    if selected_volume.name == "repo" {
+                    let selected_volume =
+                        &self.backups[self.selected_date_index].volumes[self.selected_volume_index];
+                    if selected_volume.name == "REPO" {
                         self.toggled_repo = !self.toggled_repo;
                     } else {
                         if self.selected_volumes.contains(&selected_volume.name) {
@@ -237,21 +237,13 @@ impl RestoreApp {
     }
 
     fn draw_projects(&self, area: Rect, buf: &mut Buffer) {
-        let project_names: Vec<Line> = self
-            .projects
-            .iter()
-            .enumerate()
-            .map(|(i, app)| {
-                let style = if self.selected_column == Column::Projects
-                    && i == self.selected_project_index
-                {
-                    Style::default().add_modifier(ratatui::style::Modifier::REVERSED)
-                } else {
-                    Style::default()
-                };
-                Line::from(app.clone()).style(style)
-            })
-            .collect();
+        let projects = get_projects(&self.backups);
+
+        let project_names: Vec<Line> = style_selected(
+            &projects,
+            self.selected_project_index,
+            self.selected_column == Column::Projects,
+        );
 
         Paragraph::new(Text::from(project_names))
             .block(
@@ -263,22 +255,16 @@ impl RestoreApp {
     }
 
     fn draw_backups(&self, area: Rect, buf: &mut Buffer) {
-        let selected_project = &self.projects[self.selected_project_index];
-        let dates: Vec<Line> = self
-            .backups
+        let backups = get_backups(&self.backups, &self.projects[self.selected_project_index]);
+        let binding = backups
             .iter()
-            .filter(|b| &b.name == selected_project)
-            .enumerate()
-            .map(|(i, app)| {
-                let style =
-                    if self.selected_column == Column::Dates && i == self.selected_backup_index {
-                        Style::default().add_modifier(ratatui::style::Modifier::REVERSED)
-                    } else {
-                        Style::default()
-                    };
-                Line::from(app.timestamp.format("%d. %B %Y %H:%M:%S").to_string()).style(style)
-            })
-            .collect();
+            .map(|app| app.timestamp.format("%d. %B %Y %H:%M:%S").to_string())
+            .collect::<Vec<String>>();
+        let dates = style_selected(
+            &binding,
+            self.selected_date_index,
+            self.selected_column == Column::Dates,
+        );
 
         Paragraph::new(Text::from(dates))
             .block(
@@ -298,7 +284,7 @@ impl RestoreApp {
             .collect();
 
         let mut volume_lines: Vec<Line> =
-            if let Some(selected_backup) = selected_backups.get(self.selected_backup_index) {
+            if let Some(selected_backup) = selected_backups.get(self.selected_date_index) {
                 selected_backup
                     .volumes
                     .iter()
@@ -324,7 +310,7 @@ impl RestoreApp {
             };
 
         let repo_index = selected_backups
-            .get(self.selected_backup_index)
+            .get(self.selected_date_index)
             .map_or(0, |b| b.volumes.len());
         let repo_style = if self.selected_column == Column::Volumes
             && self.selected_volume_index == repo_index
@@ -353,8 +339,8 @@ impl RestoreApp {
         let summary_text = format!(
             "Selected Project: {}\nSelected Backup: {}\nSelected Volume: {}",
             self.projects[self.selected_project_index],
-            self.backups[self.selected_backup_index].timestamp,
-            self.backups[self.selected_backup_index]
+            self.backups[self.selected_date_index].timestamp,
+            self.backups[self.selected_date_index]
                 .volumes
                 .get(self.selected_volume_index)
                 .map_or("None".to_string(), |v| v.name.clone())
@@ -442,5 +428,49 @@ async fn scan_backup_target(config: &Config) -> anyhow::Result<Vec<BackupApplica
             backups.push(meta);
         }
     }
+
     Ok(backups)
+}
+
+fn get_projects(backups: &[BackupApplication]) -> Vec<String> {
+    let mut projects = HashSet::new();
+    for backup in backups {
+        projects.insert(backup.name.clone());
+    }
+    let mut projects: Vec<String> = projects.into_iter().collect();
+    projects.sort();
+    projects
+}
+fn get_backups(backups: &[BackupApplication], project: &str) -> Vec<BackupApplication> {
+    let mut backups: Vec<BackupApplication> = backups
+        .iter()
+        .filter(|backup| backup.name == project)
+        .cloned()
+        .collect();
+    backups.sort_by(|a, b| a.timestamp.timestamp().cmp(&b.timestamp.timestamp()));
+
+    backups.reverse();
+    backups
+}
+fn get_volumes(backups: &[BackupApplication], project: &str) -> Vec<String> {
+    backups
+        .iter()
+        .filter(|backup| backup.name == project)
+        .flat_map(|backup| backup.volumes.iter().map(|v| v.name.clone()))
+        .collect()
+}
+fn style_selected(list: &Vec<String>, selected_index: usize, home_column: bool) -> Vec<Line> {
+    list.iter()
+        .enumerate()
+        .map(|(i, item)| {
+            let style = if i == selected_index && home_column {
+                Style::default().add_modifier(ratatui::style::Modifier::REVERSED)
+            } else if i == selected_index {
+                Style::default().add_modifier(ratatui::style::Modifier::UNDERLINED)
+            } else {
+                Style::default()
+            };
+            Line::from(item.clone()).style(style)
+        })
+        .collect()
 }

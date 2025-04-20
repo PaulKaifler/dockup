@@ -5,14 +5,14 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use yaml_rust::YamlLoader;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Volume {
     pub name: String,
     pub path: PathBuf,
     pub volume_type: VolumeType,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum VolumeType {
     Bind,
     Mount,
@@ -33,7 +33,7 @@ impl std::fmt::Display for BackupType {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BackupApplication {
     pub name: String,
     pub timestamp: chrono::DateTime<chrono::Local>,
