@@ -189,6 +189,26 @@ impl RestoreApp {
             self.show_help = !self.show_help;
             return;
         }
+        match key_event.code {
+            KeyCode::Char('a') => {
+                self.selected_volumes = HashSet::new();
+                let volumes = get_volumes(
+                    get_backups(&self.backups, &self.projects[self.selected_project_index])
+                        [self.selected_date_index]
+                        .clone(),
+                );
+                for volume in volumes {
+                    self.selected_volumes.insert(volume);
+                }
+            }
+            KeyCode::Char('d') => {
+                self.selected_volumes = HashSet::new();
+            }
+            KeyCode::Enter => {
+                todo!("Implement restore logic here");
+            }
+            _ => {}
+        }
         match self.selected_column {
             Column::Projects => match key_event.code {
                 KeyCode::Up => {
@@ -380,7 +400,7 @@ impl RestoreApp {
             Line::from("SPACE: select volume"),
             Line::from("ENTER: restore"),
             Line::from("a: select all    d: deselect all"),
-            Line::from("r: toggle repo   q: quit"),
+            Line::from("q: quit"),
             Line::from("h: toggle help"),
         ]);
         Paragraph::new(text)
